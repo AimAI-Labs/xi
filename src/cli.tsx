@@ -14,7 +14,9 @@ import {
   MockLLMClient,
   OpenAICompatibleClient,
 } from './agent/index.js'
-import App from './app.js'
+import GreetingApp from './app.js'
+import { createDefaultCommandRegistry } from './commands/index.js'
+import InteractiveApp from './ui/App.js'
 
 const cli = meow(
   `
@@ -22,15 +24,17 @@ const cli = meow(
 	  $ xi [command]
 
 	Commands
-	  agent <prompt>   运行 Agent 处理任务
+	  (无参数直接运行) 进入类似 Pi / Claude Code 交互式 REPL 终端
+	  agent <prompt>   运行 Agent 处理单次任务
 	  demo             运行内置全功能 Agent 多轮对话与工具调用演示
 
 	Options
-	  --name           Your name (默认欢迎模式)
+	  --name           Your name (单次欢迎模式)
 	  --session        指定会话 ID (默认: "default")
-	  --verbose        输出详细的 Agent 思考与工具调用链路 (默认: true)
+	  --verbose        输出详细链路跟踪 (默认: true)
 
 	Examples
+	  $ xi
 	  $ xi --name=Jane
 	  $ xi demo
 	  $ xi agent "帮我计算 (100 + 20) * 3"
@@ -56,6 +60,13 @@ const cli = meow(
 async function runCli() {
   const [command, ...args] = cli.input
 
+  // 1. 如果传了 --name 标志，保持原问候模式
+  if (cli.flags.name) {
+    render(<GreetingApp name={cli.flags.name} />)
+    return
+  }
+
+  // 2. demo 模式
   if (command === 'demo') {
     console.log(chalk.bold.cyan('\n🚀 启动 xi Agent 多轮执行与工具调用演示...\n'))
 
@@ -68,7 +79,6 @@ async function runCli() {
     const tracer = new Tracer({ verbose: true })
     const mockClient = new MockLLMClient()
 
-    // 预设演示回复流：先查天气，再加待办，最后总结
     mockClient.queueResponse({
       content: null,
       reasoning_content: '用户需要了解北京天气，首先调用 search 工具检索天气数据。',
@@ -129,6 +139,7 @@ async function runCli() {
     return
   }
 
+  // 3. agent 单次命令模式
   if (command === 'agent') {
     const prompt = args.join(' ').trim()
     if (!prompt) {
@@ -143,7 +154,6 @@ async function runCli() {
       .register(new TodoTool())
 
     const tracer = new Tracer({ verbose: cli.flags.verbose })
-    // 如果有 API Key 则使用 OpenAIClient，否则使用演示 client
     const apiKey = process.env['OPENAI_API_KEY']
     const client = apiKey
       ? new OpenAICompatibleClient({ apiKey })
@@ -165,8 +175,39 @@ async function runCli() {
     return
   }
 
-  // 默认模式：保持原 Ink 渲染
-  render(<App name={cli.flags.name} />)
+  // 4. 默认模式：直接启动交互式 TUI REPL
+  const toolRegistry = new ToolRegistry()
+    .register(new CalculatorTool())
+    .register(new SearchTool())
+    .register(new BashTool())
+    .register(new TodoTool())
+
+  const commandRegistry = createDefaultCommandRegistry()
+
+  const apiKey = process.env['OPENAI_API_KEY']
+  const client = apiKey
+    ? new OpenAICompatibleClient({ apiKey })
+    : new MockLLMClient({
+        handler: async (messages) => {
+          const lastMsg = messages[messages.length - 1]
+          return {
+            content: `[未检测到 OPENAI_API_KEY，本地模拟助手回复] 我收到了你的消息: "${lastMsg?.content || ''}"。\n提示: 可以输入 /model 查看或切换模型，输入 /help 查看所有可用命令与工具。`,
+          }
+        },
+      })
+
+  const runtime = new AgentRuntime({
+    llmClient: client,
+    toolRegistry,
+  })
+
+  render(
+    <InteractiveApp
+      runtime={runtime}
+      commandRegistry={commandRegistry}
+      initialSessionId={cli.flags.session}
+    />,
+  )
 }
 
 void runCli()
