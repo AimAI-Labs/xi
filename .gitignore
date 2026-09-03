@@ -4,9 +4,6 @@ node_modules/
 # Production output
 dist/
 
-# Documentation / Specs
-docs/
-
 # Logs
 logs/
 *.log
@@ -27,3 +24,8 @@ Thumbs.db
 # Coverage & Reports
 coverage/
 *.lcov
+
+
+
+docs/
+reference/
