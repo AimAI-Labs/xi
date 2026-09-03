@@ -23,7 +23,12 @@ test('App mounts and renders Header and prompt', (t) => {
   const registry = new CommandRegistry()
 
   const { lastFrame } = render(
-    <App runtime={runtime} commandRegistry={registry} initialSessionId="test-app" />,
+    <App
+      runtime={runtime}
+      commandRegistry={registry}
+      initialSessionId="test-app"
+      requireApiKey={false}
+    />,
   )
 
   const frame = lastFrame() || ''
@@ -39,7 +44,12 @@ test('App executes slash commands and displays feedback', async (t) => {
   registry.register(new HelpCommand(registry))
 
   const { lastFrame, stdin } = render(
-    <App runtime={runtime} commandRegistry={registry} initialSessionId="test-cmd" />,
+    <App
+      runtime={runtime}
+      commandRegistry={registry}
+      initialSessionId="test-cmd"
+      requireApiKey={false}
+    />,
   )
 
   // 等待 React 挂载完成 useEffect
@@ -65,7 +75,12 @@ test('App handles user question and renders Agent response', async (t) => {
   const registry = new CommandRegistry()
 
   const { lastFrame, stdin } = render(
-    <App runtime={runtime} commandRegistry={registry} initialSessionId="test-chat" />,
+    <App
+      runtime={runtime}
+      commandRegistry={registry}
+      initialSessionId="test-chat"
+      requireApiKey={false}
+    />,
   )
 
   // 等待 React 挂载完成
@@ -79,4 +94,12 @@ test('App handles user question and renders Agent response', async (t) => {
   })
 
   t.true(matched)
+})
+
+test('App enters ApiKeySetup mode when requireApiKey is true', (t) => {
+  const { lastFrame } = render(<App requireApiKey={true} />)
+  const frame = lastFrame() || ''
+  t.true(frame.includes('欢迎使用 xi 智能终端助手'))
+  t.true(frame.includes('DeepSeek'))
+  t.true(frame.includes('Key >'))
 })

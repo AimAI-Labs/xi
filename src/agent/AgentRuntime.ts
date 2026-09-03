@@ -41,6 +41,14 @@ export class AgentRuntime {
     }
   }
 
+  setLLMClient(client: LLMClient): void {
+    this.llmClient = client
+  }
+
+  getLLMClient(): LLMClient {
+    return this.llmClient
+  }
+
   /**
    * 运行 Agent 任务，驱动四步 Loop 状态机
    */

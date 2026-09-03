@@ -5,6 +5,7 @@ import { MockLLMClient } from '../../src/agent/LLMClient.js'
 import { ClearCommand } from '../../src/commands/builtin/ClearCommand.js'
 import { ExitCommand } from '../../src/commands/builtin/ExitCommand.js'
 import { HelpCommand } from '../../src/commands/builtin/HelpCommand.js'
+import { KeyCommand } from '../../src/commands/builtin/KeyCommand.js'
 import { ModelCommand } from '../../src/commands/builtin/ModelCommand.js'
 import { SessionCommand } from '../../src/commands/builtin/SessionCommand.js'
 import { CommandRegistry } from '../../src/commands/CommandRegistry.js'
@@ -57,12 +58,29 @@ test('ModelCommand displays current model or updates it', async (t) => {
   const res1 = await cmd.execute('', ctx)
   t.is(res1.type, 'output')
   t.true(res1.message?.includes('gpt-4o-mini'))
+  t.true(res1.message?.includes('https://api.deepseek.com'))
 
   // 2. 带参切换
   const res2 = await cmd.execute('deepseek-chat', ctx)
   t.is(res2.type, 'output')
   t.is(state.currentModel, 'deepseek-chat')
   t.true(res2.message?.includes('已切换模型为: deepseek-chat'))
+})
+
+test('KeyCommand displays and updates API Key', async (t) => {
+  const cmd = new KeyCommand()
+  const { ctx } = createTestContext()
+
+  // 1. 无参查询
+  const res1 = await cmd.execute('', ctx)
+  t.is(res1.type, 'output')
+  t.truthy(res1.message)
+
+  // 2. 配置 Key
+  const res2 = await cmd.execute('sk-new-key-12345678', ctx)
+  t.is(res2.type, 'output')
+  t.true(res2.message?.includes('成功更新并保存'))
+  t.true(res2.message?.includes('~/.xi.toml'))
 })
 
 test('SessionCommand displays or switches session', async (t) => {

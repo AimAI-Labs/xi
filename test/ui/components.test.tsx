@@ -65,7 +65,15 @@ test('Spinner displays status text when active', (t) => {
   t.true((lastFrame() || '').includes('正在思考中...'))
 })
 
-test('InputPrompt renders properly', (t) => {
-  const { lastFrame } = render(<InputPrompt onSubmit={() => {}} onExit={() => {}} />)
-  t.true((lastFrame() || '').includes('xi >'))
+test('InputPrompt renders properly and displays thinking status', (t) => {
+  const { lastFrame: f1 } = render(
+    <InputPrompt thinkingEnabled={true} onSubmit={() => {}} onExit={() => {}} />,
+  )
+  t.true((f1() || '').includes('xi >'))
+  t.true((f1() || '').includes('思考: 开'))
+
+  const { lastFrame: f2 } = render(
+    <InputPrompt thinkingEnabled={false} onSubmit={() => {}} onExit={() => {}} />,
+  )
+  t.true((f2() || '').includes('思考: 关'))
 })

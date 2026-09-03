@@ -15,7 +15,7 @@ import {
   OpenAICompatibleClient,
 } from './agent/index.js'
 import GreetingApp from './app.js'
-import { createDefaultCommandRegistry } from './commands/index.js'
+import { loadConfig, resolveApiKey } from './config/index.js'
 import InteractiveApp from './ui/App.js'
 
 const cli = meow(
@@ -154,12 +154,17 @@ async function runCli() {
       .register(new TodoTool())
 
     const tracer = new Tracer({ verbose: cli.flags.verbose })
-    const apiKey = process.env['OPENAI_API_KEY']
+    const config = loadConfig()
+    const apiKey = resolveApiKey(config)
     const client = apiKey
-      ? new OpenAICompatibleClient({ apiKey })
+      ? new OpenAICompatibleClient({
+          apiKey,
+          baseURL: config.llm?.base_url,
+          model: config.llm?.model,
+        })
       : new MockLLMClient({
           handler: async () => ({
-            content: `[未检测到 OPENAI_API_KEY，已启动本地模拟回复] 收到指令: "${prompt}"。若要连通真实大模型，请配置 OPENAI_API_KEY 与 OPENAI_BASE_URL。`,
+            content: `[未检测到有效 API Key，已启动本地模拟回复] 收到指令: "${prompt}"。请在 ~/.xi.toml 或环境变量 DEEPSEEK_API_KEY 中配置密钥。`,
           }),
         })
 
@@ -182,16 +187,21 @@ async function runCli() {
     .register(new BashTool())
     .register(new TodoTool())
 
-  const commandRegistry = createDefaultCommandRegistry()
+  const config = loadConfig()
+  const apiKey = resolveApiKey(config)
+  const initialModel = config.llm?.model || 'deepseek-v4-flash'
 
-  const apiKey = process.env['OPENAI_API_KEY']
   const client = apiKey
-    ? new OpenAICompatibleClient({ apiKey })
+    ? new OpenAICompatibleClient({
+        apiKey,
+        baseURL: config.llm?.base_url,
+        model: initialModel,
+      })
     : new MockLLMClient({
         handler: async (messages) => {
           const lastMsg = messages[messages.length - 1]
           return {
-            content: `[未检测到 OPENAI_API_KEY，本地模拟助手回复] 我收到了你的消息: "${lastMsg?.content || ''}"。\n提示: 可以输入 /model 查看或切换模型，输入 /help 查看所有可用命令与工具。`,
+            content: `[未检测到 API Key，本地模拟助手回复] 我收到了你的消息: "${lastMsg?.content || ''}"。\n提示: 可以输入 /model 查看或切换模型，输入 /help 查看所有可用命令与工具。`,
           }
         },
       })
@@ -204,8 +214,9 @@ async function runCli() {
   render(
     <InteractiveApp
       runtime={runtime}
-      commandRegistry={commandRegistry}
       initialSessionId={cli.flags.session}
+      initialModel={initialModel}
+      apiKey={apiKey}
     />,
   )
 }

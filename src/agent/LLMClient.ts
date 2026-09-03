@@ -18,10 +18,27 @@ export class OpenAICompatibleClient implements LLMClient {
   private temperature: number
 
   constructor(options: OpenAICompatibleClientOptions = {}) {
-    this.apiKey = options.apiKey || process.env['OPENAI_API_KEY'] || ''
-    this.baseURL = options.baseURL || process.env['OPENAI_BASE_URL'] || 'https://api.openai.com/v1'
-    this.model = options.model || process.env['OPENAI_MODEL'] || 'gpt-4o-mini'
+    this.apiKey =
+      options.apiKey || process.env['DEEPSEEK_API_KEY'] || process.env['OPENAI_API_KEY'] || ''
+    this.baseURL =
+      options.baseURL ||
+      process.env['DEEPSEEK_BASE_URL'] ||
+      process.env['OPENAI_BASE_URL'] ||
+      'https://api.deepseek.com'
+    this.model =
+      options.model ||
+      process.env['DEEPSEEK_MODEL'] ||
+      process.env['OPENAI_MODEL'] ||
+      'deepseek-v4-flash'
     this.temperature = options.temperature ?? 0.2
+  }
+
+  getBaseURL(): string {
+    return this.baseURL
+  }
+
+  getModel(): string {
+    return this.model
   }
 
   async chat(messages: Message[], tools?: any[]): Promise<LLMResponse> {
