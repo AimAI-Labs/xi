@@ -1,17 +1,18 @@
-import React from 'react';
-import chalk from 'chalk';
-import test from 'ava';
-import {render} from 'ink-testing-library';
-import App from './source/app.js';
+import test from 'ava'
+import chalk from 'chalk'
+import { render } from 'ink-testing-library'
+import React from 'react'
 
-test('greet unknown user', t => {
-	const {lastFrame} = render(<App name={undefined} />);
+import App from './src/app.js'
 
-	t.is(lastFrame(), `Hello, ${chalk.green('Stranger')}`);
-});
+test('greet unknown user', (t) => {
+  const { lastFrame } = render(<App name={undefined} />)
 
-test('greet user with a name', t => {
-	const {lastFrame} = render(<App name="Jane" />);
+  t.is(lastFrame(), `Hello, ${chalk.green('Stranger')}`)
+})
 
-	t.is(lastFrame(), `Hello, ${chalk.green('Jane')}`);
-});
+test('greet user with a name', (t) => {
+  const { lastFrame } = render(<App name="Jane" />)
+
+  t.is(lastFrame(), `Hello, ${chalk.green('Jane')}`)
+})
