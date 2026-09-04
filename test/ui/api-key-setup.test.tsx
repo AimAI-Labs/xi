@@ -19,7 +19,7 @@ test('ApiKeySetup renders banner and prompt', (t) => {
 
   t.true(frame.includes('DeepSeek'))
   t.true(frame.includes('API Key'))
-  t.true(frame.includes('~/.xi.toml'))
+  t.true(frame.includes('~/.xi/xi.toml'))
 })
 
 test('ApiKeySetup triggers onExit when submitted empty', async (t) => {

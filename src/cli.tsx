@@ -164,7 +164,7 @@ async function runCli() {
         })
       : new MockLLMClient({
           handler: async () => ({
-            content: `[未检测到有效 API Key，已启动本地模拟回复] 收到指令: "${prompt}"。请在 ~/.xi.toml 或环境变量 DEEPSEEK_API_KEY 中配置密钥。`,
+            content: `[未检测到有效 API Key，已启动本地模拟回复] 收到指令: "${prompt}"。请在 ~/.xi/xi.toml 或环境变量 DEEPSEEK_API_KEY 中配置密钥。`,
           }),
         })
 

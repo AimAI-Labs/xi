@@ -25,41 +25,70 @@ export const DEFAULT_CONFIG: XiConfig = {
   },
 }
 
+export function getConfigDir(): string {
+  return path.join(os.homedir(), '.xi')
+}
+
 export function getConfigPath(): string {
+  if (process.env['XI_CONFIG_PATH']) {
+    return process.env['XI_CONFIG_PATH']
+  }
+  return path.join(getConfigDir(), 'xi.toml')
+}
+
+export function getLegacyConfigPath(): string {
   return path.join(os.homedir(), '.xi.toml')
 }
 
-export function loadConfig(customPath?: string): XiConfig {
+function parseConfigContent(content: string): XiConfig {
+  const parsed = parse(content) as any
+
+  return {
+    llm: {
+      provider: parsed.llm?.provider ?? DEFAULT_CONFIG.llm.provider,
+      api_key: parsed.llm?.api_key ?? DEFAULT_CONFIG.llm.api_key,
+      base_url: parsed.llm?.base_url ?? DEFAULT_CONFIG.llm.base_url,
+      model: parsed.llm?.model ?? DEFAULT_CONFIG.llm.model,
+      temperature: parsed.llm?.temperature ?? DEFAULT_CONFIG.llm.temperature,
+    },
+    agent: {
+      max_turns: parsed.agent?.max_turns ?? DEFAULT_CONFIG.agent?.max_turns,
+      verbose: parsed.agent?.verbose ?? DEFAULT_CONFIG.agent?.verbose,
+    },
+    ui: {
+      theme: parsed.ui?.theme ?? DEFAULT_CONFIG.ui?.theme,
+    },
+  }
+}
+
+export function loadConfig(customPath?: string, legacyCustomPath?: string): XiConfig {
   const filePath = customPath || getConfigPath()
+  const legacyPath = legacyCustomPath || getLegacyConfigPath()
 
-  if (!fs.existsSync(filePath)) {
-    return structuredClone(DEFAULT_CONFIG)
-  }
-
-  try {
-    const content = fs.readFileSync(filePath, 'utf-8')
-    const parsed = parse(content) as any
-
-    return {
-      llm: {
-        provider: parsed.llm?.provider ?? DEFAULT_CONFIG.llm.provider,
-        api_key: parsed.llm?.api_key ?? DEFAULT_CONFIG.llm.api_key,
-        base_url: parsed.llm?.base_url ?? DEFAULT_CONFIG.llm.base_url,
-        model: parsed.llm?.model ?? DEFAULT_CONFIG.llm.model,
-        temperature: parsed.llm?.temperature ?? DEFAULT_CONFIG.llm.temperature,
-      },
-      agent: {
-        max_turns: parsed.agent?.max_turns ?? DEFAULT_CONFIG.agent?.max_turns,
-        verbose: parsed.agent?.verbose ?? DEFAULT_CONFIG.agent?.verbose,
-      },
-      ui: {
-        theme: parsed.ui?.theme ?? DEFAULT_CONFIG.ui?.theme,
-      },
+  if (fs.existsSync(filePath)) {
+    try {
+      const content = fs.readFileSync(filePath, 'utf-8')
+      return parseConfigContent(content)
+    } catch (error) {
+      console.warn(`[xi] 读取配置文件失败 (${filePath}):`, error)
+      return structuredClone(DEFAULT_CONFIG)
     }
-  } catch (error) {
-    console.warn(`[xi] 读取配置文件失败 (${filePath}):`, error)
-    return structuredClone(DEFAULT_CONFIG)
   }
+
+  // 兼容平滑迁移：仅在默认路径加载或显式传入 legacyCustomPath 时，才在目标不存在时自动迁移
+  const shouldCheckLegacy = legacyCustomPath !== undefined || customPath === undefined
+  if (shouldCheckLegacy && fs.existsSync(legacyPath)) {
+    try {
+      const content = fs.readFileSync(legacyPath, 'utf-8')
+      const legacyConfig = parseConfigContent(content)
+      saveConfig(legacyConfig, filePath)
+      return legacyConfig
+    } catch (error) {
+      console.warn(`[xi] 迁移旧配置文件失败 (${legacyPath}):`, error)
+    }
+  }
+
+  return structuredClone(DEFAULT_CONFIG)
 }
 
 export function saveConfig(config: XiConfig, customPath?: string): void {

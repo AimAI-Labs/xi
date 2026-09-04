@@ -24,7 +24,7 @@ export class ModelCommand implements SlashCommand {
           `当前模型: ${context.currentModel}`,
           `API 端点: ${baseUrl}`,
           `API Key:  ${keyStatus}`,
-          `配置文件: ~/.xi.toml`,
+          `配置文件: ~/.xi/xi.toml`,
           `提示: 可通过 "/model <model_name>" 切换模型，通过 "/key <api_key>" 配置密钥`,
         ].join('\n'),
       }
@@ -32,16 +32,19 @@ export class ModelCommand implements SlashCommand {
 
     context.setCurrentModel(targetModel)
 
-    // 持久化到 ~/.xi.toml
+    // 持久化到 ~/.xi/xi.toml
     config.llm = {
       ...config.llm,
       model: targetModel,
     }
     saveConfig(config)
 
+    // 通知外层上下文状态同步
+    context.onConfigChange?.(config)
+
     return {
       type: 'output',
-      message: `已切换模型为: ${targetModel} (已同步保存至 ~/.xi.toml)`,
+      message: `已切换模型为: ${targetModel} (已同步保存至 ~/.xi/xi.toml)`,
     }
   }
 }

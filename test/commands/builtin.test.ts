@@ -1,3 +1,7 @@
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+
 import test from 'ava'
 
 import { AgentRuntime, ToolRegistry } from '../../src/agent/index.js'
@@ -10,6 +14,20 @@ import { ModelCommand } from '../../src/commands/builtin/ModelCommand.js'
 import { SessionCommand } from '../../src/commands/builtin/SessionCommand.js'
 import { CommandRegistry } from '../../src/commands/CommandRegistry.js'
 import type { CommandContext } from '../../src/commands/types.js'
+import type { XiConfig } from '../../src/config/types.js'
+
+const testSandboxDir = path.join(os.tmpdir(), `xi-cmd-test-${Date.now()}-${Math.random()}`)
+const testSandboxToml = path.join(testSandboxDir, 'xi.toml')
+
+test.before(() => {
+  fs.mkdirSync(testSandboxDir, { recursive: true })
+  process.env['XI_CONFIG_PATH'] = testSandboxToml
+})
+
+test.after.always(() => {
+  delete process.env['XI_CONFIG_PATH']
+  fs.rmSync(testSandboxDir, { recursive: true, force: true })
+})
 
 function createTestContext(): { ctx: CommandContext; state: any } {
   const state = {
@@ -17,6 +35,7 @@ function createTestContext(): { ctx: CommandContext; state: any } {
     currentModel: 'gpt-4o-mini',
     cleared: false,
     exited: false,
+    lastConfigChange: null as XiConfig | null,
   }
 
   const toolRegistry = new ToolRegistry()
@@ -45,6 +64,9 @@ function createTestContext(): { ctx: CommandContext; state: any } {
     exit: () => {
       state.exited = true
     },
+    onConfigChange: (cfg) => {
+      state.lastConfigChange = cfg
+    },
   }
 
   return { ctx, state }
@@ -65,11 +87,13 @@ test('ModelCommand displays current model or updates it', async (t) => {
   t.is(res2.type, 'output')
   t.is(state.currentModel, 'deepseek-chat')
   t.true(res2.message?.includes('已切换模型为: deepseek-chat'))
+  t.true(res2.message?.includes('~/.xi/xi.toml'))
+  t.is(state.lastConfigChange?.llm.model, 'deepseek-chat')
 })
 
 test('KeyCommand displays and updates API Key', async (t) => {
   const cmd = new KeyCommand()
-  const { ctx } = createTestContext()
+  const { ctx, state } = createTestContext()
 
   // 1. 无参查询
   const res1 = await cmd.execute('', ctx)
@@ -80,7 +104,9 @@ test('KeyCommand displays and updates API Key', async (t) => {
   const res2 = await cmd.execute('sk-new-key-12345678', ctx)
   t.is(res2.type, 'output')
   t.true(res2.message?.includes('成功更新并保存'))
-  t.true(res2.message?.includes('~/.xi.toml'))
+  t.true(res2.message?.includes('~/.xi/xi.toml'))
+  t.is(state.lastConfigChange?.llm.api_key, 'sk-new-key-12345678')
+  t.true(fs.existsSync(testSandboxToml))
 })
 
 test('SessionCommand displays or switches session', async (t) => {

@@ -92,7 +92,7 @@ export function ApiKeySetup({ onSave, onExit }: ApiKeySetupProps) {
         <Text color="white">系统默认集成 DeepSeek 大模型服务（deepseek-v4-flash）。</Text>
         <Text color="yellow">检测到您尚未配置 API Key。请输入您的 DeepSeek API Key：</Text>
         <Text color="gray">
-          (可前往 https://platform.deepseek.com 注册获取，配置将保存至 ~/.xi.toml)
+          (可前往 https://platform.deepseek.com 注册获取，配置将保存至 ~/.xi/xi.toml)
         </Text>
       </Box>
 
@@ -116,7 +116,7 @@ export function ApiKeySetup({ onSave, onExit }: ApiKeySetupProps) {
 
       <Box marginTop={1}>
         <Text color="gray">
-          (按 Enter 保存至 ~/.xi.toml · 若无 Key 直接按回车或 Ctrl+C 退出程序)
+          (按 Enter 保存至 ~/.xi/xi.toml · 若无 Key 直接按回车或 Ctrl+C 退出程序)
         </Text>
       </Box>
     </Box>

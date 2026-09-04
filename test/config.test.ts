@@ -15,7 +15,49 @@ import type { XiConfig } from '../src/config/types.js'
 
 test('getConfigPath returns correct path in user home directory', (t) => {
   const p = getConfigPath()
-  t.is(p, path.join(os.homedir(), '.xi.toml'))
+  t.is(p, path.join(os.homedir(), '.xi', 'xi.toml'))
+})
+
+test('getConfigPath prioritizes process.env.XI_CONFIG_PATH sandbox', (t) => {
+  const original = process.env['XI_CONFIG_PATH']
+  try {
+    process.env['XI_CONFIG_PATH'] = '/tmp/custom-sandbox.toml'
+    t.is(getConfigPath(), '/tmp/custom-sandbox.toml')
+  } finally {
+    if (original !== undefined) {
+      process.env['XI_CONFIG_PATH'] = original
+    } else {
+      delete process.env['XI_CONFIG_PATH']
+    }
+  }
+})
+
+test('loadConfig automatically migrates legacy ~/.xi.toml to ~/.xi/xi.toml', (t) => {
+  const tmpDir = path.join(os.tmpdir(), `xi-migrate-test-${Date.now()}-${Math.random()}`)
+  fs.mkdirSync(tmpDir, { recursive: true })
+  const legacyFile = path.join(tmpDir, '.xi.toml')
+  const newDir = path.join(tmpDir, '.xi')
+  const newFile = path.join(newDir, 'xi.toml')
+
+  // 预置旧配置文件
+  saveConfig(
+    { ...DEFAULT_CONFIG, llm: { ...DEFAULT_CONFIG.llm, api_key: 'sk-legacy-key' } },
+    legacyFile,
+  )
+  t.true(fs.existsSync(legacyFile))
+  t.false(fs.existsSync(newFile))
+
+  // 执行迁移加载
+  const loaded = loadConfig(newFile, legacyFile)
+  t.is(loaded.llm.api_key, 'sk-legacy-key')
+  t.true(fs.existsSync(newFile))
+
+  // 再次加载新路径直接命中
+  const reloaded = loadConfig(newFile, legacyFile)
+  t.is(reloaded.llm.api_key, 'sk-legacy-key')
+
+  // 清理临时沙箱
+  fs.rmSync(tmpDir, { recursive: true, force: true })
 })
 
 test('loadConfig returns default config when file does not exist', (t) => {

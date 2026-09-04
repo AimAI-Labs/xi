@@ -103,10 +103,20 @@ export default function App({
         id: `sys-${Date.now()}`,
         role: 'system',
         content:
-          '🎉 API Key 已成功保存至 ~/.xi.toml，DeepSeek 服务已就绪！\n提示: 输入 /help 查看命令，按 Tab 可快速切换思考模式。',
+          '🎉 API Key 已成功保存至 ~/.xi/xi.toml，DeepSeek 服务已就绪！\n提示: 输入 /help 查看命令，按 Tab 可快速切换思考模式。',
         timestamp: Date.now(),
       },
     ])
+  }
+
+  const handleConfigChange = (newConfig: XiConfig) => {
+    setConfig(newConfig)
+    if (newConfig.llm?.api_key) {
+      setApiKey(newConfig.llm.api_key)
+    }
+    if (newConfig.llm?.model) {
+      setCurrentModel(newConfig.llm.model)
+    }
   }
 
   const commandContext: CommandContext = {
@@ -117,6 +127,7 @@ export default function App({
     runtime,
     clearScreen,
     exit: handleExit,
+    onConfigChange: handleConfigChange,
   }
 
   const handleSubmit = async (text: string) => {

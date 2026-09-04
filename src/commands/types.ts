@@ -1,4 +1,5 @@
 import type { AgentRuntime } from '../agent/index.js'
+import type { XiConfig } from '../config/index.js'
 
 export interface CommandContext {
   sessionId: string
@@ -8,6 +9,7 @@ export interface CommandContext {
   runtime: AgentRuntime
   clearScreen: () => void
   exit: () => void
+  onConfigChange?: (config: XiConfig) => void
 }
 
 export type CommandResult =

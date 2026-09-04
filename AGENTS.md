@@ -25,7 +25,7 @@
 | **开发语言**     | TypeScript 5.x                                          | 严格类型检查模式 (`tsconfig.json` & `tsconfig.build.json`) |
 | **终端 UI 引擎** | React 18 + [Ink 4](https://github.com/vadimdemedes/ink) | 终端交互式命令行组件化渲染                                 |
 | **CLI 解析**     | `meow 11`                                               | 极简优雅的命令行参数解析                                   |
-| **配置格式**     | `smol-toml 1.8`                                         | 严格遵循 TOML v1.0.0 规范，配置文件为全局 `~/.xi.toml`     |
+| **配置格式**     | `smol-toml 1.8`                                         | 严格遵循 TOML v1.0.0 规范，配置文件为全局 `~/.xi/xi.toml`  |
 | **代码格式化**   | `oxfmt 0.66.x`                                          | 极速 Rust 原生格式化工具，**严禁**使用 Prettier            |
 | **代码检查**     | `oxlint 1.81.x`                                         | 极速 Rust 原生静态检查工具，**严禁**使用 ESLint            |
 | **测试体系**     | `ava 5.x` + `tsx` + `ink-testing-library 3.x`           | 通过 `--import=tsx` 直接执行 ESM TypeScript 测试           |
@@ -93,13 +93,14 @@ xi/
 
 ### 4.1 全局配置与 API Key 优先级
 
-- **配置文件**：统一存储于用户家目录下的 `~/.xi.toml`（跨平台统一使用 `node:os` 的 `os.homedir()` 解析）。
+- **配置文件**：统一存储于用户全局目录下的 `~/.xi/xi.toml`（跨平台统一使用 `node:os` 的 `os.homedir()` 解析），单元测试通过 `process.env['XI_CONFIG_PATH']` 注入临时目录沙箱，严禁测试写透用户配置。
+- **平滑兼容迁移**：启动时若检测到新配置不存在但旧路径 `~/.xi.toml` 存在，自动将旧配置安全迁移至 `~/.xi/xi.toml`，确保用户密钥与设置永不丢失。
 - **默认模型与提供商**：默认使用 DeepSeek 官方 API（Base URL: `https://api.deepseek.com`，默认模型: `deepseek-v4-flash`）。
 - **Key 解析优先级**：
   1. `process.env['DEEPSEEK_API_KEY']`（最高优先级）
-  2. `config.llm.api_key`（来自 `~/.xi.toml`）
+  2. `config.llm.api_key`（来自 `~/.xi/xi.toml`）
   3. `process.env['OPENAI_API_KEY']`（向后兼容兜底）
-- **首次交互式配置**：当 `resolveApiKey()` 为空时，TUI 会自动挂载 `<ApiKeySetup />`，引导用户输入并持久化保存至 `~/.xi.toml`，无须手动改动配置文件。
+- **首次交互式配置**：当 `resolveApiKey()` 为空时，TUI 会自动挂载 `<ApiKeySetup />`，引导用户输入并持久化保存至 `~/.xi/xi.toml`，无须手动改动配置文件。
 
 ### 4.2 思考流提炼与模型适配
 

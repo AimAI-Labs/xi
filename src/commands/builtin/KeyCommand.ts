@@ -23,7 +23,7 @@ export class KeyCommand implements SlashCommand {
           type: 'output',
           message: [
             `当前 API Key: ${masked}`,
-            `存储位置: ~/.xi.toml`,
+            `存储位置: ~/.xi/xi.toml`,
             `如需更新，请输入: /key <your_new_key>`,
           ].join('\n'),
         }
@@ -32,11 +32,11 @@ export class KeyCommand implements SlashCommand {
       return {
         type: 'output',
         message:
-          '当前未配置 API Key。\n请输入: /key <your_deepseek_api_key> 进行配置并保存至 ~/.xi.toml',
+          '当前未配置 API Key。\n请输入: /key <your_deepseek_api_key> 进行配置并保存至 ~/.xi/xi.toml',
       }
     }
 
-    // 更新并保存至 ~/.xi.toml
+    // 更新并保存至 ~/.xi/xi.toml
     config.llm = {
       ...config.llm,
       api_key: inputKey,
@@ -51,12 +51,15 @@ export class KeyCommand implements SlashCommand {
     })
     context.runtime.setLLMClient(newClient)
 
+    // 通知外层上下文状态同步
+    context.onConfigChange?.(config)
+
     const masked =
       inputKey.length > 8 ? `${inputKey.slice(0, 4)}••••••••${inputKey.slice(-4)}` : '••••••••'
 
     return {
       type: 'output',
-      message: `🎉 API Key 已成功更新并保存至 ~/.xi.toml (${masked})，已即刻生效！`,
+      message: `🎉 API Key 已成功更新并保存至 ~/.xi/xi.toml (${masked})，已即刻生效！`,
     }
   }
 }
