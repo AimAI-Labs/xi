@@ -2,6 +2,10 @@
   "name": "@aimai-labs/xi",
   "version": "0.0.0",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AimAI-Labs/xi.git"
+  },
   "bin": {
     "xi": "dist/cli.js"
   },
