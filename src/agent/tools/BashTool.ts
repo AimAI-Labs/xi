@@ -2,6 +2,7 @@ import { exec } from 'node:child_process'
 import { promisify } from 'node:util'
 
 import type { Tool, ToolContext, ToolParametersSchema } from '../types.js'
+import { checkDangerousCommand } from './dangerousCommands.js'
 
 const execAsync = promisify(exec)
 
@@ -36,10 +37,23 @@ export class BashTool implements Tool {
     this.cwd = options.cwd ?? process.cwd()
   }
 
-  async execute(args: { command: string }, _context: ToolContext): Promise<string> {
+  async execute(args: { command: string }, context: ToolContext): Promise<string> {
     const cmd = args.command?.trim()
     if (!cmd) {
       throw new Error('执行命令不能为空')
+    }
+
+    const check = checkDangerousCommand(cmd)
+    if (check.isDangerous) {
+      const reason = check.reason || '检测到潜在破坏性操作'
+      if (!context.confirmDangerousCommand) {
+        return `[安全拦截] 命令 "${cmd}" 被判定为高危指令（原因: ${reason}）。当前环境未启用交互式确认，已阻止执行。`
+      }
+
+      const approved = await context.confirmDangerousCommand(cmd, reason)
+      if (!approved) {
+        return `[用户取消] 用户已拒绝执行高危命令: "${cmd}"（原因: ${reason}）。`
+      }
     }
 
     try {

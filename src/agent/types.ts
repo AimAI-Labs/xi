@@ -44,6 +44,7 @@ export type Message = SystemMessage | UserMessage | AssistantMessage | ToolMessa
 // 3. 工具上下文与接口定义
 export interface ToolContext {
   sessionId: string
+  confirmDangerousCommand?: (command: string, reason: string) => Promise<boolean>
   [key: string]: unknown
 }
 
@@ -114,6 +115,7 @@ export interface AgentOptions {
   enableMicroCompact?: boolean
   verbose?: boolean
   thinking?: boolean
+  confirmDangerousCommand?: (command: string, reason: string) => Promise<boolean>
 }
 
 export interface AgentRunResult {

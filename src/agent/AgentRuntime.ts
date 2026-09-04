@@ -178,6 +178,7 @@ export class AgentRuntime {
         const execResult = await this.toolRegistry.executeSafely(toolName, parsedArgs, {
           sessionId,
           tracer: this.tracer,
+          confirmDangerousCommand: opts.confirmDangerousCommand,
         })
         const durationMs = Date.now() - startTime
 
@@ -417,6 +418,7 @@ export class AgentRuntime {
         const execResult = await this.toolRegistry.executeSafely(toolName, parsedArgs, {
           sessionId,
           tracer: this.tracer,
+          confirmDangerousCommand: opts.confirmDangerousCommand,
         })
         const durationMs = Date.now() - startTime
 

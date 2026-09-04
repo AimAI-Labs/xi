@@ -9,6 +9,7 @@ import { createDefaultCommandRegistry } from '../commands/index.js'
 import type { CommandContext } from '../commands/types.js'
 import { loadConfig, resolveApiKey, saveConfig, type XiConfig } from '../config/index.js'
 import { ApiKeySetup } from './components/ApiKeySetup.js'
+import { DangerConfirmCard } from './components/DangerConfirmCard.js'
 import { Header } from './components/Header.js'
 import { InputPrompt } from './components/InputPrompt.js'
 import { MessageList } from './components/MessageList.js'
@@ -138,6 +139,11 @@ export default function App({
     })
   }
   const [isToolsExpanded, setIsToolsExpanded] = useState(false)
+  const [pendingConfirmation, setPendingConfirmation] = useState<{
+    command: string
+    reason: string
+    resolve: (approved: boolean) => void
+  } | null>(null)
 
   const [commandRegistry] = useState(() => propRegistry ?? createDefaultCommandRegistry())
 
@@ -260,6 +266,18 @@ export default function App({
 
       for await (const event of runtime.runStream(sessionId, text, {
         thinking: thinkingEnabledRef.current,
+        confirmDangerousCommand: (command, reason) => {
+          return new Promise<boolean>((resolve) => {
+            setPendingConfirmation({
+              command,
+              reason,
+              resolve: (approved) => {
+                setPendingConfirmation(null)
+                resolve(approved)
+              },
+            })
+          })
+        },
       })) {
         if (event.type === 'thinking_delta') {
           if (!thinkingEnabledRef.current) continue
@@ -404,11 +422,18 @@ export default function App({
       <Header model={currentModel} sessionId={sessionId} version={version} />
       <MessageList isToolsExpanded={isToolsExpanded} items={items} />
       {isBusy && <Spinner status={busyStatus} />}
+      {pendingConfirmation && (
+        <DangerConfirmCard
+          command={pendingConfirmation.command}
+          onConfirm={pendingConfirmation.resolve}
+          reason={pendingConfirmation.reason}
+        />
+      )}
       <InputPrompt
         commands={commandRegistry.getAll()}
         currentModel={currentModel}
         currentSessionId={sessionId}
-        isDisabled={isBusy}
+        isDisabled={isBusy || Boolean(pendingConfirmation)}
         isToolsExpanded={isToolsExpanded}
         onExit={handleExit}
         onFetchModels={() => runtime.getLLMClient().fetchModels?.() ?? Promise.resolve([])}

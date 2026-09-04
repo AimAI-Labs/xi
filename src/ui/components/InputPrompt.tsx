@@ -319,15 +319,19 @@ export function InputPrompt({
     if (isSessionActive && onFetchSessions) {
       const sessions = onFetchSessions()
       if (Array.isArray(sessions)) {
-        setAvailableSessions(sessions)
+        queueMicrotask(() => {
+          setAvailableSessions(sessions)
+        })
       }
     }
   }, [isSessionActive, onFetchSessions])
 
   useEffect(() => {
     if (isModelActive && !hasFetchedModels && onFetchModels) {
-      setIsLoadingModels(true)
-      setHasFetchedModels(true)
+      queueMicrotask(() => {
+        setIsLoadingModels(true)
+        setHasFetchedModels(true)
+      })
       onFetchModels()
         .then((models) => {
           if (Array.isArray(models) && models.length > 0) {
