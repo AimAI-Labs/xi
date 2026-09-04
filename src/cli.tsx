@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import chalk from 'chalk'
 import { render } from 'ink'
 import meow from 'meow'
