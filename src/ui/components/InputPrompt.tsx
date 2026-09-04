@@ -257,7 +257,7 @@ export function InputPrompt({
       {/* 输入条卡片：保留灰色圆角外边框，取消内部文本底色 */}
       <Box flexDirection="row" borderStyle="round" borderColor="gray" paddingX={1}>
         <Text bold color="cyan">
-          xi &gt;{' '}
+          ξ &gt;{' '}
         </Text>
         {value ? <Text color="white">{value}</Text> : <Text color="gray">{placeholder}</Text>}
         {!isDisabled && <Text color="cyan">█</Text>}

@@ -8,12 +8,18 @@ import { MessageItem } from '../../src/ui/components/MessageItem.js'
 import { Spinner } from '../../src/ui/components/Spinner.js'
 import type { DisplayItem } from '../../src/ui/types.js'
 
-test('Header renders version, model and session', (t) => {
-  const { lastFrame } = render(<Header model="gpt-4o-mini" sessionId="session-1" version="0.0.0" />)
+test('Header renders version, model and session with ξ ASCII logo', (t) => {
+  const { lastFrame } = render(
+    <Header model="deepseek-chat" sessionId="session-1" version="1.0.0" />,
+  )
   const frame = lastFrame() || ''
-  t.true(frame.includes('xi'))
-  t.true(frame.includes('gpt-4o-mini'))
-  t.true(frame.includes('session-1'))
+  t.true(frame.includes('╭─╮'))
+  t.true(frame.includes('╰─╮'))
+  t.true(frame.includes('╰─╯'))
+  t.true(frame.includes('ξ'))
+  t.true(frame.includes('v1.0.0'))
+  t.true(frame.includes('deepseek-chat'))
+  t.true(frame.includes('session: session-1'))
 })
 
 test('MessageItem renders user and assistant messages properly', (t) => {
@@ -69,7 +75,7 @@ test('InputPrompt renders properly and displays thinking status', (t) => {
   const { lastFrame: f1 } = render(
     <InputPrompt thinkingEnabled={true} onSubmit={() => {}} onExit={() => {}} />,
   )
-  t.true((f1() || '').includes('xi >'))
+  t.true((f1() || '').includes('ξ >'))
   t.true((f1() || '').includes('思考: 开'))
 
   const { lastFrame: f2 } = render(

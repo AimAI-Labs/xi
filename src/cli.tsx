@@ -213,10 +213,11 @@ async function runCli() {
 
   render(
     <InteractiveApp
-      runtime={runtime}
-      initialSessionId={cli.flags.session}
-      initialModel={initialModel}
       apiKey={apiKey}
+      initialModel={initialModel}
+      initialSessionId={cli.flags.session}
+      runtime={runtime}
+      version={cli.pkg.version ?? '0.0.0'}
     />,
   )
 }

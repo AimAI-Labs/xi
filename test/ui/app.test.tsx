@@ -32,9 +32,9 @@ test('App mounts and renders Header and prompt', (t) => {
   )
 
   const frame = lastFrame() || ''
-  t.true(frame.includes('xi'))
+  t.true(frame.includes('ξ'))
   t.true(frame.includes('test-app'))
-  t.true(frame.includes('xi >'))
+  t.true(frame.includes('ξ >'))
 })
 
 test('App executes slash commands and displays feedback', async (t) => {
