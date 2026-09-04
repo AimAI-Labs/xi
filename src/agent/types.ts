@@ -121,3 +121,34 @@ export interface AgentRunResult {
   turnsCount: number
   traces: TraceEvent[]
 }
+
+// 7. LLM 与 Agent 流式事件契约
+export interface LLMStreamChunk {
+  content?: string | null
+  reasoning_content?: string | null
+  tool_calls?: ToolCall[]
+  isDone?: boolean
+}
+
+export type AgentStreamEvent =
+  | { type: 'thinking_delta'; sessionId: string; delta: string }
+  | { type: 'content_delta'; sessionId: string; delta: string }
+  | {
+      type: 'tool_start'
+      sessionId: string
+      toolCallId: string
+      toolName: string
+      args: Record<string, unknown>
+    }
+  | {
+      type: 'tool_end'
+      sessionId: string
+      toolCallId: string
+      toolName: string
+      isError: boolean
+      result: string
+      durationMs: number
+    }
+  | { type: 'turn_completed'; sessionId: string; turnIndex: number }
+  | { type: 'finished'; sessionId: string; finalResponse: string }
+  | { type: 'error'; sessionId: string; error: string }

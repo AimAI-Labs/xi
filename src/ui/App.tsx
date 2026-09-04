@@ -52,6 +52,7 @@ export default function App({
   const [isBusy, setIsBusy] = useState(false)
   const [busyStatus, setBusyStatus] = useState('')
   const [thinkingEnabled, setThinkingEnabled] = useState(true)
+  const [isToolsExpanded, setIsToolsExpanded] = useState(false)
 
   const [runtime] = useState(() => {
     if (propRuntime) return propRuntime
@@ -145,11 +146,17 @@ export default function App({
     }
 
     // 2. 处理常规自然语言任务/提问
+    // 将已有所有消息标记为历史（以便界面以暗灰底色区隔当前轮次）
+    setItems((prev) =>
+      prev.map((item) => (item.isHistorical ? item : { ...item, isHistorical: true })),
+    )
+
     const userItem: DisplayItem = {
       id: `user-${Date.now()}`,
       role: 'user',
       content: text,
       timestamp: Date.now(),
+      isHistorical: false,
     }
     setItems((prev) => [...prev, userItem])
 
@@ -157,52 +164,133 @@ export default function App({
     setBusyStatus('思考中...')
 
     try {
-      const runResult = await runtime.run(sessionId, text)
+      let currentThinkingId: string | null = null
+      let currentAssistantId: string | null = null
+      let hasReceivedAnyContent = false
 
-      // 解析本次运行中的思考与工具调用 trace
-      const traces = runResult.traces || []
-      const thinkingEvent = traces.find((t) => t.type === 'llm_response' && t.data?.reasoning)
+      for await (const event of runtime.runStream(sessionId, text)) {
+        if (event.type === 'thinking_delta') {
+          if (!thinkingEnabled) continue
 
-      // 仅当开启思考模式时展示思考内容
-      if (thinkingEnabled && thinkingEvent?.data?.reasoning) {
-        setItems((prev) => [
-          ...prev,
-          {
-            id: `think-${Date.now()}`,
-            role: 'thinking',
-            content: thinkingEvent.data!.reasoning!,
-            timestamp: Date.now(),
-          },
-        ])
-      }
+          if (!currentThinkingId) {
+            currentThinkingId = `think-${Date.now()}`
+            const newThinkingItem: DisplayItem = {
+              id: currentThinkingId,
+              role: 'thinking',
+              content: event.delta,
+              timestamp: Date.now(),
+              isHistorical: false,
+            }
+            setItems((prev) => [...prev, newThinkingItem])
+          } else {
+            setItems((prev) =>
+              prev.map((item) =>
+                item.id === currentThinkingId
+                  ? { ...item, content: item.content + event.delta }
+                  : item,
+              ),
+            )
+          }
+        } else if (event.type === 'content_delta') {
+          hasReceivedAnyContent = true
+          // 思考流已转为正文流，关闭当前 thinking 的追加
+          currentThinkingId = null
 
-      const toolEvents = traces.filter((t) => t.type === 'tool_result')
-      for (const t of toolEvents) {
-        setItems((prev) => [
-          ...prev,
-          {
-            id: `tool-${Date.now()}-${t.timestamp}`,
+          if (!currentAssistantId) {
+            currentAssistantId = `assistant-${Date.now()}`
+            const newAssistantItem: DisplayItem = {
+              id: currentAssistantId,
+              role: 'assistant',
+              content: event.delta,
+              timestamp: Date.now(),
+              isHistorical: false,
+            }
+            setItems((prev) => [...prev, newAssistantItem])
+          } else {
+            setItems((prev) =>
+              prev.map((item) =>
+                item.id === currentAssistantId
+                  ? { ...item, content: item.content + event.delta }
+                  : item,
+              ),
+            )
+          }
+        } else if (event.type === 'tool_start') {
+          setBusyStatus(`执行工具 ${event.toolName}...`)
+          // 工具调用发生：立即闭合之前的思考和回答项，保证后续内容排在工具之后，与大模型输出顺序严格一致
+          currentThinkingId = null
+          currentAssistantId = null
+
+          const toolItemId = `tool-${event.toolCallId}`
+          const newToolItem: DisplayItem = {
+            id: toolItemId,
             role: 'tool',
-            content: `${t.data?.toolName || 'tool'}: ${t.data?.result || 'completed'}`,
+            content: `${event.toolName}: running`,
             timestamp: Date.now(),
-          },
-        ])
+            isHistorical: false,
+            toolCall: {
+              toolCallId: event.toolCallId,
+              toolName: event.toolName,
+              args: event.args,
+              status: 'running',
+            },
+          }
+          setItems((prev) => [...prev, newToolItem])
+        } else if (event.type === 'tool_end') {
+          setBusyStatus('')
+          const toolItemId = `tool-${event.toolCallId}`
+          setItems((prev) =>
+            prev.map((item) =>
+              item.id === toolItemId
+                ? {
+                    ...item,
+                    content: `${event.toolName}: ${event.isError ? 'error' : 'completed'}`,
+                    toolCall: {
+                      toolCallId: event.toolCallId,
+                      toolName: event.toolName,
+                      status: event.isError ? 'error' : 'completed',
+                      result: event.result,
+                      durationMs: event.durationMs,
+                      args: item.toolCall?.args,
+                    },
+                  }
+                : item,
+            ),
+          )
+        } else if (event.type === 'turn_completed') {
+          // 当前轮次结束，闭合项
+          currentThinkingId = null
+          currentAssistantId = null
+        } else if (event.type === 'finished') {
+          // 仅当没有流式接收到任何正文但有 finalResponse 时兜底展示
+          if (!hasReceivedAnyContent && event.finalResponse) {
+            const finalItem: DisplayItem = {
+              id: `assistant-${Date.now()}`,
+              role: 'assistant',
+              content: event.finalResponse,
+              timestamp: Date.now(),
+              isHistorical: false,
+            }
+            setItems((prev) => [...prev, finalItem])
+          }
+        } else if (event.type === 'error') {
+          const errItem: DisplayItem = {
+            id: `err-${Date.now()}`,
+            role: 'system',
+            content: `Error: ${event.error}`,
+            timestamp: Date.now(),
+            isHistorical: false,
+          }
+          setItems((prev) => [...prev, errItem])
+        }
       }
-
-      // 添加 Assistant 最终回答
-      const assistantItem: DisplayItem = {
-        id: `assistant-${Date.now()}`,
-        role: 'assistant',
-        content: runResult.finalResponse || '(无输出)',
-        timestamp: Date.now(),
-      }
-      setItems((prev) => [...prev, assistantItem])
     } catch (err: any) {
       const errItem: DisplayItem = {
         id: `err-${Date.now()}`,
         role: 'system',
         content: `Error: ${err?.message || String(err)}`,
         timestamp: Date.now(),
+        isHistorical: false,
       }
       setItems((prev) => [...prev, errItem])
     } finally {
@@ -218,16 +306,18 @@ export default function App({
 
   return (
     <Box flexDirection="column" paddingX={1} paddingY={1}>
-      <Header version={version} model={currentModel} sessionId={sessionId} />
-      <MessageList items={items} />
+      <Header model={currentModel} sessionId={sessionId} version={version} />
+      <MessageList isToolsExpanded={isToolsExpanded} items={items} />
       {isBusy && <Spinner status={busyStatus} />}
       <InputPrompt
-        isDisabled={isBusy}
         commands={commandRegistry.getAll()}
-        thinkingEnabled={thinkingEnabled}
-        onToggleThinking={() => setThinkingEnabled((prev) => !prev)}
-        onSubmit={handleSubmit}
+        isDisabled={isBusy}
+        isToolsExpanded={isToolsExpanded}
         onExit={handleExit}
+        onSubmit={handleSubmit}
+        onToggleExpandTools={() => setIsToolsExpanded((prev) => !prev)}
+        onToggleThinking={() => setThinkingEnabled((prev) => !prev)}
+        thinkingEnabled={thinkingEnabled}
       />
     </Box>
   )

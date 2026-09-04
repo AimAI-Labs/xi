@@ -12,6 +12,8 @@ export interface InputPromptProps {
   commands?: SlashCommand[]
   thinkingEnabled?: boolean
   onToggleThinking?: () => void
+  isToolsExpanded?: boolean
+  onToggleExpandTools?: () => void
 }
 
 interface RawInputHandlerProps {
@@ -28,6 +30,7 @@ interface RawInputHandlerProps {
   isMenuDismissed: boolean
   setIsMenuDismissed: React.Dispatch<React.SetStateAction<boolean>>
   onToggleThinking?: () => void
+  onToggleExpandTools?: () => void
   onSubmit: (value: string) => void
   onExit: () => void
 }
@@ -49,6 +52,7 @@ function RawInputHandler({
   isMenuDismissed,
   setIsMenuDismissed,
   onToggleThinking,
+  onToggleExpandTools,
   onSubmit,
   onExit,
 }: RawInputHandlerProps) {
@@ -66,13 +70,19 @@ function RawInputHandler({
   })
 
   useInput((input, key) => {
-    if (isDisabled) return
-
     // Ctrl+C 退出
     if (key.ctrl && input === 'c') {
       onExit()
       return
     }
+
+    // Ctrl+O 切换展开/折叠工具输出
+    if (key.ctrl && input === 'o') {
+      onToggleExpandTools?.()
+      return
+    }
+
+    if (isDisabled) return
 
     // Tab 键: 循环切换思考模式
     if (key.tab) {
@@ -178,10 +188,12 @@ export function InputPrompt({
   isDisabled = false,
   onSubmit,
   onExit,
-  placeholder = '输入消息或 / 唤出命令...',
+  placeholder = '有什么我可以帮忙的？输入 / 查看命令...',
   commands = [],
   thinkingEnabled = true,
   onToggleThinking,
+  isToolsExpanded = false,
+  onToggleExpandTools,
 }: InputPromptProps) {
   const { isRawModeSupported, stdin } = useStdin()
   const isRealTTY = Boolean(isRawModeSupported && typeof (stdin as any).ref === 'function')
@@ -233,6 +245,7 @@ export function InputPrompt({
           isMenuDismissed={isMenuDismissed}
           setIsMenuDismissed={setIsMenuDismissed}
           onToggleThinking={onToggleThinking}
+          onToggleExpandTools={onToggleExpandTools}
           onSubmit={onSubmit}
           onExit={onExit}
         />
@@ -252,7 +265,9 @@ export function InputPrompt({
 
       {/* 底部按键提示与右下方思考模式指示 */}
       <Box flexDirection="row" justifyContent="space-between" marginTop={0}>
-        <Text color="gray">(Tab 切换思考 · 输入 / 唤出命令 · ↑/↓ 历史 · Ctrl+C 退出)</Text>
+        <Text color="gray">
+          (Tab 思考 · Ctrl+O {isToolsExpanded ? '折叠输出' : '展开输出'} · / 命令 · ↑/↓ 历史)
+        </Text>
         <Box marginLeft={1}>
           {thinkingEnabled ? (
             <Text bold color="green">

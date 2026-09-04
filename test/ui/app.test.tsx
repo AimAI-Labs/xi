@@ -103,3 +103,101 @@ test('App enters ApiKeySetup mode when requireApiKey is true', (t) => {
   t.true(frame.includes('DeepSeek'))
   t.true(frame.includes('Key >'))
 })
+
+test('App streams thinking and tool call with command visualization', async (t) => {
+  const llm = new MockLLMClient()
+  llm.queueStreamChunks([
+    { reasoning_content: '思考中...' },
+    {
+      tool_calls: [
+        {
+          id: 'call_bash_1',
+          type: 'function',
+          function: {
+            name: 'bash',
+            arguments: JSON.stringify({ command: 'echo "hello from tool"' }),
+          },
+        },
+      ],
+      isDone: true,
+    },
+  ])
+  llm.queueStreamChunks([{ content: '命令执行完成啦！' }, { isDone: true }])
+
+  const runtime = new AgentRuntime({ llmClient: llm })
+  const registry = new CommandRegistry()
+
+  const { lastFrame, stdin } = render(
+    <App
+      commandRegistry={registry}
+      initialSessionId="test-stream"
+      requireApiKey={false}
+      runtime={runtime}
+    />,
+  )
+
+  await new Promise((resolve) => setTimeout(resolve, 30))
+  stdin.write('运行 echo 命令\r\n')
+
+  const matched = await waitForCondition(() => {
+    const frame = lastFrame() || ''
+    return (
+      frame.includes('思考中...') &&
+      frame.includes('bash') &&
+      frame.includes('echo "hello from tool"') &&
+      frame.includes('命令执行完成啦！')
+    )
+  })
+
+  t.true(matched)
+})
+
+test('App preserves sequential order of Pre-Tool Content -> Tool -> Post-Tool Content', async (t) => {
+  const llm = new MockLLMClient()
+  // Turn 1: 文本 + 工具调用
+  llm.queueStreamChunks([
+    { content: '好的，我先为你执行命令：' },
+    {
+      tool_calls: [
+        {
+          id: 'call_bash_order',
+          type: 'function',
+          function: {
+            name: 'bash',
+            arguments: JSON.stringify({ command: 'node -v' }),
+          },
+        },
+      ],
+      isDone: true,
+    },
+  ])
+  // Turn 2: 后续回答
+  llm.queueStreamChunks([{ content: '根据命令返回，当前版本已就绪。' }, { isDone: true }])
+
+  const runtime = new AgentRuntime({ llmClient: llm })
+  const registry = new CommandRegistry()
+
+  const { lastFrame, stdin } = render(
+    <App
+      commandRegistry={registry}
+      initialSessionId="test-order"
+      requireApiKey={false}
+      runtime={runtime}
+    />,
+  )
+
+  await new Promise((resolve) => setTimeout(resolve, 30))
+  stdin.write('查看版本\r\n')
+
+  const matched = await waitForCondition(() => {
+    const frame = lastFrame() || ''
+    const prePos = frame.indexOf('好的，我先为你执行命令：')
+    const toolPos = frame.indexOf('node -v')
+    const postPos = frame.indexOf('根据命令返回，当前版本已就绪。')
+    return (
+      prePos !== -1 && toolPos !== -1 && postPos !== -1 && prePos < toolPos && toolPos < postPos
+    )
+  })
+
+  t.true(matched)
+})

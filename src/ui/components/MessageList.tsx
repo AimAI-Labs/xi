@@ -6,13 +6,14 @@ import { MessageItem } from './MessageItem.js'
 
 export interface MessageListProps {
   items: DisplayItem[]
+  isToolsExpanded?: boolean
 }
 
-export function MessageList({ items }: MessageListProps) {
+export function MessageList({ items, isToolsExpanded = false }: MessageListProps) {
   return (
     <Box flexDirection="column">
       {items.map((item) => (
-        <MessageItem key={item.id} item={item} />
+        <MessageItem key={item.id} isExpanded={isToolsExpanded} item={item} />
       ))}
     </Box>
   )

@@ -1,7 +1,8 @@
-import type { LLMResponse, Message, ToolCall } from './types.js'
+import type { LLMResponse, LLMStreamChunk, Message, ToolCall } from './types.js'
 
 export interface LLMClient {
   chat(messages: Message[], tools?: any[]): Promise<LLMResponse>
+  chatStream(messages: Message[], tools?: any[]): AsyncIterable<LLMStreamChunk>
 }
 
 export interface OpenAICompatibleClientOptions {
@@ -96,6 +97,123 @@ export class OpenAICompatibleClient implements LLMClient {
       tool_calls: toolCalls,
     }
   }
+
+  async *chatStream(messages: Message[], tools?: any[]): AsyncIterable<LLMStreamChunk> {
+    const url = `${this.baseURL.replace(/\/+$/, '')}/chat/completions`
+
+    const body: Record<string, any> = {
+      model: this.model,
+      messages,
+      temperature: this.temperature,
+      stream: true,
+    }
+
+    if (tools && tools.length > 0) {
+      body['tools'] = tools
+      body['tool_choice'] = 'auto'
+    }
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${this.apiKey}`,
+      },
+      body: JSON.stringify(body),
+    })
+
+    if (!res.ok) {
+      const errText = await res.text()
+      throw new Error(`LLM 流式请求失败 (status: ${res.status}): ${errText}`)
+    }
+
+    if (!res.body) {
+      throw new Error('LLM 流式响应无可用数据体')
+    }
+
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder('utf-8')
+    let buffer = ''
+    const toolCallsAcc = new Map<number, { id: string; name: string; arguments: string }>()
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() ?? ''
+
+        for (const rawLine of lines) {
+          const line = rawLine.trim()
+          if (!line || !line.startsWith('data:')) continue
+
+          const payloadStr = line.slice(5).trim()
+          if (payloadStr === '[DONE]') {
+            if (toolCallsAcc.size > 0) {
+              const tool_calls: ToolCall[] = Array.from(toolCallsAcc.values()).map((t) => ({
+                id: t.id,
+                type: 'function',
+                function: {
+                  name: t.name,
+                  arguments: t.arguments,
+                },
+              }))
+              yield { tool_calls, isDone: true }
+              toolCallsAcc.clear()
+            } else {
+              yield { isDone: true }
+            }
+            return
+          }
+
+          try {
+            const data = JSON.parse(payloadStr)
+            const delta = data.choices?.[0]?.delta
+            if (!delta) continue
+
+            if (delta.reasoning_content) {
+              yield { reasoning_content: delta.reasoning_content }
+            }
+
+            if (delta.content) {
+              yield { content: delta.content }
+            }
+
+            if (delta.tool_calls && Array.isArray(delta.tool_calls)) {
+              for (const tc of delta.tool_calls) {
+                const idx = tc.index ?? 0
+                const current = toolCallsAcc.get(idx) ?? { id: '', name: '', arguments: '' }
+                if (tc.id) current.id = tc.id
+                if (tc.function?.name) current.name += tc.function.name
+                if (tc.function?.arguments) current.arguments += tc.function.arguments
+                toolCallsAcc.set(idx, current)
+              }
+            }
+          } catch {
+            // 忽略非合法 JSON 片段
+          }
+        }
+      }
+
+      if (toolCallsAcc.size > 0) {
+        const tool_calls: ToolCall[] = Array.from(toolCallsAcc.values()).map((t) => ({
+          id: t.id,
+          type: 'function',
+          function: {
+            name: t.name,
+            arguments: t.arguments,
+          },
+        }))
+        yield { tool_calls, isDone: true }
+      } else {
+        yield { isDone: true }
+      }
+    } finally {
+      reader.releaseLock()
+    }
+  }
 }
 
 export type DynamicMockHandler = (messages: Message[], tools?: any[]) => Promise<LLMResponse>
@@ -106,6 +224,7 @@ export interface MockLLMClientOptions {
 
 export class MockLLMClient implements LLMClient {
   private responseQueue: LLMResponse[] = []
+  private streamQueue: LLMStreamChunk[][] = []
   private handler?: DynamicMockHandler
 
   constructor(options: MockLLMClientOptions = {}) {
@@ -114,6 +233,11 @@ export class MockLLMClient implements LLMClient {
 
   queueResponse(response: LLMResponse): this {
     this.responseQueue.push(response)
+    return this
+  }
+
+  queueStreamChunks(chunks: LLMStreamChunk[]): this {
+    this.streamQueue.push(chunks)
     return this
   }
 
@@ -135,5 +259,28 @@ export class MockLLMClient implements LLMClient {
     return {
       content: 'Hello! I am your AI assistant.',
     }
+  }
+
+  async *chatStream(messages: Message[], tools?: any[]): AsyncIterable<LLMStreamChunk> {
+    if (this.streamQueue.length > 0) {
+      const chunks = this.streamQueue.shift()!
+      for (const chunk of chunks) {
+        yield chunk
+      }
+      return
+    }
+
+    // 默认降级：使用 chat 的响应转换为流式 chunks
+    const res = await this.chat(messages, tools)
+    if (res.reasoning_content) {
+      yield { reasoning_content: res.reasoning_content }
+    }
+    if (res.content) {
+      yield { content: res.content }
+    }
+    if (res.tool_calls && res.tool_calls.length > 0) {
+      yield { tool_calls: res.tool_calls }
+    }
+    yield { isDone: true }
   }
 }
