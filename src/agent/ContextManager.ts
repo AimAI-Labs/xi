@@ -5,7 +5,7 @@ export interface ContextManagerOptions {
   enableMicroCompact?: boolean
   maxToolResultLength?: number // 单条旧 tool 结果允许的最大字符数，超出则裁剪
   maxContextMessages?: number // 兜底最大保留消息条数
-  maxTurnsInContext?: number // 滑动窗口最大保留对话轮数（默认 10）
+  maxTurnsInContext?: number // 滑动窗口最大保留对话轮数（默认 5）
 }
 
 export class ContextManager {
@@ -20,7 +20,7 @@ export class ContextManager {
     this.enableMicroCompact = options.enableMicroCompact ?? true
     this.maxToolResultLength = options.maxToolResultLength ?? 300
     this.maxContextMessages = options.maxContextMessages ?? 40
-    this.maxTurnsInContext = options.maxTurnsInContext ?? 10
+    this.maxTurnsInContext = options.maxTurnsInContext ?? 5
   }
 
   /**
@@ -39,7 +39,7 @@ export class ContextManager {
       messages = this.applyMicroCompact(messages)
     }
 
-    // 3. 执行基于 10 轮对话的滑动窗口压缩
+    // 3. 执行基于 5 轮对话的滑动窗口压缩与信息精炼
     messages = this.applyTurnBasedSlidingWindow(messages)
 
     // 4. 兜底执行最大消息数控制
@@ -89,9 +89,10 @@ export class ContextManager {
   }
 
   /**
-   * 超出 10 轮对话后触发滑动窗口：
-   * 保留首轮核心意图（System + First User Turn），完整保留最近 10 轮，
-   * 裁剪中间过期轮次的思考过程（reasoning_content）与大体积工具输出。
+   * 超出 5 轮对话后触发滑动窗口：
+   * 1. 保留首轮核心意图（System + First User Turn），剥离思考链与临时工具调用
+   * 2. 保留最近 5 轮完整上下文（包括工具链、执行结果与当前思考）
+   * 3. 裁剪中间过期超期轮次：省略不重要的工具执行日志、过渡 tool_calls 与思考链，保留核心提问与最终回答
    */
   private applyTurnBasedSlidingWindow(messages: Message[]): Message[] {
     const userIndices: number[] = []
@@ -106,7 +107,7 @@ export class ContextManager {
       return messages
     }
 
-    // 1. 保留头部系统提示与首轮意图
+    // 1. 保留头部系统提示与首轮核心意图
     const headMessages: Message[] = []
     let cursor = 0
     if (messages[0]?.role === 'system') {
@@ -114,55 +115,61 @@ export class ContextManager {
       cursor = 1
     }
 
-    // 首轮 User 及其回答
+    // 提取首轮 User 及其最终回答正文
     const firstUserIndex = userIndices[0]!
     if (firstUserIndex >= cursor) {
       headMessages.push(messages[firstUserIndex]!)
-      const nextMsg = messages[firstUserIndex + 1]
-      if (nextMsg && nextMsg.role === 'assistant') {
-        // 剥离首轮回答中冗长的思考链，保留核心答复
+
+      // 寻找下一个 user 之前的最后一个具有非空 content 的 assistant 消息
+      const nextUserIdx = userIndices.length > 1 ? userIndices[1]! : messages.length
+      let finalAssistantMsg: AssistantMessage | null = null
+      for (let i = firstUserIndex + 1; i < nextUserIdx; i++) {
+        const m = messages[i]
+        if (m?.role === 'assistant' && m.content) {
+          finalAssistantMsg = m as AssistantMessage
+        }
+      }
+
+      if (finalAssistantMsg) {
+        // 剥离首轮回答中冗长的思考链与工具调用，保留核心答复
         headMessages.push({
-          ...nextMsg,
-          reasoning_content: undefined,
+          role: 'assistant',
+          content: finalAssistantMsg.content,
         } as AssistantMessage)
       }
     }
 
-    // 2. 截取最近 N 轮（默认最近 10 轮）
-    const recentTurnStartIndex = userIndices[turnCount - this.maxTurnsInContext]!
-    const recentMessages = messages.slice(recentTurnStartIndex)
-
-    // 3. 处理首轮与最近 10 轮之间的中间过期轮次
-    const middleStartIndex = (firstUserIndex ?? 0) + 2
-    const middleEndIndex = recentTurnStartIndex
-
+    // 2. 处理首轮与最近 5 轮之间的中间过期轮次（Middle Turns）
+    const middleTurnLimit = turnCount - this.maxTurnsInContext
     const middleMessages: Message[] = []
-    if (middleEndIndex > middleStartIndex) {
-      const candidateMiddle = messages.slice(middleStartIndex, middleEndIndex)
-      for (const m of candidateMiddle) {
-        if (m.role === 'assistant') {
-          // 省略中间轮次不重要的思考过程
-          middleMessages.push({
-            ...m,
-            reasoning_content: undefined,
-          } as AssistantMessage)
-        } else if (m.role === 'tool') {
-          // 强化压缩中间轮次的工具输出
-          const toolMsg = m as ToolMessage
-          if (toolMsg.content && toolMsg.content.length > this.maxToolResultLength) {
-            const head = toolMsg.content.slice(0, Math.floor(this.maxToolResultLength / 2))
-            middleMessages.push({
-              ...toolMsg,
-              content: `${head}... [Tool result truncated]`,
-            })
-          } else {
-            middleMessages.push(m)
-          }
-        } else {
-          middleMessages.push(m)
+
+    for (let turn = 1; turn < middleTurnLimit; turn++) {
+      const currentTurnUserIdx = userIndices[turn]!
+      const nextTurnLimitIdx = userIndices[turn + 1]!
+
+      // 保留该轮 User 提问
+      middleMessages.push(messages[currentTurnUserIdx]!)
+
+      // 寻找该轮 Assistant 的最终有效文本回答，丢弃中间 tool 和 tool_calls
+      let turnFinalAssistant: AssistantMessage | null = null
+      for (let i = currentTurnUserIdx + 1; i < nextTurnLimitIdx; i++) {
+        const m = messages[i]
+        if (m?.role === 'assistant' && m.content) {
+          turnFinalAssistant = m as AssistantMessage
         }
       }
+
+      if (turnFinalAssistant) {
+        middleMessages.push({
+          role: 'assistant',
+          content: turnFinalAssistant.content,
+        } as AssistantMessage)
+      }
     }
+
+    // 3. 截取最近 N 轮（默认最近 5 轮），完整保留
+    const recentTurnStartIndex = userIndices[middleTurnLimit]!
+    const recentMessages = messages.slice(recentTurnStartIndex)
 
     return [...headMessages, ...middleMessages, ...recentMessages]
   }
