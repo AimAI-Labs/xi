@@ -38,6 +38,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Upgrade npm to latest for Trusted Publishing
+        run: npm install -g npm@latest
+
       - name: Sync version
         run: |
           if [[ "${{ github.ref_type }}" == "tag" ]]; then
@@ -62,8 +65,6 @@ jobs:
 
       - name: Publish to npm
         run: npm publish --access public --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
