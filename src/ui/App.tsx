@@ -1,5 +1,5 @@
 import { Box, useApp } from 'ink'
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 
 import { AgentRuntime, OpenAICompatibleClient } from '../agent/index.js'
 import { MockLLMClient } from '../agent/LLMClient.js'
@@ -124,6 +124,19 @@ export default function App({
   const [isBusy, setIsBusy] = useState(false)
   const [busyStatus, setBusyStatus] = useState('')
   const [thinkingEnabled, setThinkingEnabled] = useState(true)
+  const thinkingEnabledRef = useRef(thinkingEnabled)
+
+  useEffect(() => {
+    thinkingEnabledRef.current = thinkingEnabled
+  }, [thinkingEnabled])
+
+  const handleToggleThinking = () => {
+    setThinkingEnabled((prev) => {
+      const next = !prev
+      thinkingEnabledRef.current = next
+      return next
+    })
+  }
   const [isToolsExpanded, setIsToolsExpanded] = useState(false)
 
   const [commandRegistry] = useState(() => propRegistry ?? createDefaultCommandRegistry())
@@ -238,16 +251,18 @@ export default function App({
     setItems((prev) => [...prev, userItem])
 
     setIsBusy(true)
-    setBusyStatus('思考中...')
+    setBusyStatus(thinkingEnabledRef.current ? '思考中...' : '生成中...')
 
     try {
       let currentThinkingId: string | null = null
       let currentAssistantId: string | null = null
       let hasReceivedAnyContent = false
 
-      for await (const event of runtime.runStream(sessionId, text)) {
+      for await (const event of runtime.runStream(sessionId, text, {
+        thinking: thinkingEnabledRef.current,
+      })) {
         if (event.type === 'thinking_delta') {
-          if (!thinkingEnabled) continue
+          if (!thinkingEnabledRef.current) continue
 
           if (!currentThinkingId) {
             currentThinkingId = `think-${Date.now()}`
@@ -269,6 +284,9 @@ export default function App({
             )
           }
         } else if (event.type === 'content_delta') {
+          if (!hasReceivedAnyContent) {
+            setBusyStatus('生成中...')
+          }
           hasReceivedAnyContent = true
           // 思考流已转为正文流，关闭当前 thinking 的追加
           currentThinkingId = null
@@ -397,7 +415,7 @@ export default function App({
         onFetchSessions={() => runtime.getSessionStore().getAllSessions()}
         onSubmit={handleSubmit}
         onToggleExpandTools={() => setIsToolsExpanded((prev) => !prev)}
-        onToggleThinking={() => setThinkingEnabled((prev) => !prev)}
+        onToggleThinking={handleToggleThinking}
         thinkingEnabled={thinkingEnabled}
       />
     </Box>

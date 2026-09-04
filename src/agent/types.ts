@@ -113,6 +113,7 @@ export interface AgentOptions {
   systemPrompt?: string
   enableMicroCompact?: boolean
   verbose?: boolean
+  thinking?: boolean
 }
 
 export interface AgentRunResult {

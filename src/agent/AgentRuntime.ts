@@ -100,6 +100,7 @@ export class AgentRuntime {
       const response = await this.llmClient.chat(
         contextMessages,
         toolsSchema.length > 0 ? toolsSchema : undefined,
+        opts.thinking !== undefined ? { thinking: opts.thinking } : undefined,
       )
 
       this.tracer.record({
@@ -279,6 +280,7 @@ export class AgentRuntime {
       for await (const chunk of this.llmClient.chatStream(
         contextMessages,
         toolsSchema.length > 0 ? toolsSchema : undefined,
+        opts.thinking !== undefined ? { thinking: opts.thinking } : undefined,
       )) {
         if (chunk.reasoning_content) {
           turnReasoning += chunk.reasoning_content

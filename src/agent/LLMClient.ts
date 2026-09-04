@@ -1,8 +1,16 @@
 import type { LLMResponse, LLMStreamChunk, Message, ToolCall } from './types.js'
 
+export interface LLMCallOptions {
+  thinking?: boolean
+}
+
 export interface LLMClient {
-  chat(messages: Message[], tools?: any[]): Promise<LLMResponse>
-  chatStream(messages: Message[], tools?: any[]): AsyncIterable<LLMStreamChunk>
+  chat(messages: Message[], tools?: any[], options?: LLMCallOptions): Promise<LLMResponse>
+  chatStream(
+    messages: Message[],
+    tools?: any[],
+    options?: LLMCallOptions,
+  ): AsyncIterable<LLMStreamChunk>
   fetchModels?(): Promise<string[]>
 }
 
@@ -93,13 +101,17 @@ export class OpenAICompatibleClient implements LLMClient {
     return this.fetchModelsPromise
   }
 
-  async chat(messages: Message[], tools?: any[]): Promise<LLMResponse> {
+  async chat(messages: Message[], tools?: any[], options?: LLMCallOptions): Promise<LLMResponse> {
     const url = `${this.baseURL.replace(/\/+$/, '')}/chat/completions`
 
     const body: Record<string, any> = {
       model: this.model,
       messages,
       temperature: this.temperature,
+    }
+
+    if (options?.thinking !== undefined) {
+      body['thinking'] = { type: options.thinking ? 'enabled' : 'disabled' }
     }
 
     if (tools && tools.length > 0) {
@@ -149,7 +161,11 @@ export class OpenAICompatibleClient implements LLMClient {
     }
   }
 
-  async *chatStream(messages: Message[], tools?: any[]): AsyncIterable<LLMStreamChunk> {
+  async *chatStream(
+    messages: Message[],
+    tools?: any[],
+    options?: LLMCallOptions,
+  ): AsyncIterable<LLMStreamChunk> {
     const url = `${this.baseURL.replace(/\/+$/, '')}/chat/completions`
 
     const body: Record<string, any> = {
@@ -157,6 +173,10 @@ export class OpenAICompatibleClient implements LLMClient {
       messages,
       temperature: this.temperature,
       stream: true,
+    }
+
+    if (options?.thinking !== undefined) {
+      body['thinking'] = { type: options.thinking ? 'enabled' : 'disabled' }
     }
 
     if (tools && tools.length > 0) {
@@ -267,7 +287,11 @@ export class OpenAICompatibleClient implements LLMClient {
   }
 }
 
-export type DynamicMockHandler = (messages: Message[], tools?: any[]) => Promise<LLMResponse>
+export type DynamicMockHandler = (
+  messages: Message[],
+  tools?: any[],
+  options?: LLMCallOptions,
+) => Promise<LLMResponse>
 
 export interface MockLLMClientOptions {
   handler?: DynamicMockHandler
@@ -298,13 +322,13 @@ export class MockLLMClient implements LLMClient {
     return this
   }
 
-  async chat(messages: Message[], tools?: any[]): Promise<LLMResponse> {
+  async chat(messages: Message[], tools?: any[], options?: LLMCallOptions): Promise<LLMResponse> {
     if (this.responseQueue.length > 0) {
       return this.responseQueue.shift()!
     }
 
     if (this.handler) {
-      return this.handler(messages, tools)
+      return this.handler(messages, tools, options)
     }
 
     // 兜底返回默认问候
@@ -313,7 +337,11 @@ export class MockLLMClient implements LLMClient {
     }
   }
 
-  async *chatStream(messages: Message[], tools?: any[]): AsyncIterable<LLMStreamChunk> {
+  async *chatStream(
+    messages: Message[],
+    tools?: any[],
+    options?: LLMCallOptions,
+  ): AsyncIterable<LLMStreamChunk> {
     if (this.streamQueue.length > 0) {
       const chunks = this.streamQueue.shift()!
       for (const chunk of chunks) {
@@ -323,7 +351,7 @@ export class MockLLMClient implements LLMClient {
     }
 
     // 默认降级：使用 chat 的响应转换为流式 chunks
-    const res = await this.chat(messages, tools)
+    const res = await this.chat(messages, tools, options)
     if (res.reasoning_content) {
       yield { reasoning_content: res.reasoning_content }
     }

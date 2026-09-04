@@ -109,7 +109,7 @@ function RawInputHandler({
     if (isDisabled) return
 
     // Tab 键: 循环切换思考模式
-    if (key.tab) {
+    if (key.tab || input === '\t') {
       onToggleThinking?.()
       return
     }
@@ -346,10 +346,13 @@ export function InputPrompt({
     if (isRealTTY || isDisabled) return
 
     const handleData = (chunk: Buffer | string) => {
-      const text = chunk
-        .toString()
-        .replace(/[\r\n]+/g, '')
-        .trim()
+      const raw = chunk.toString()
+      if (raw === '\t') {
+        onToggleThinking?.()
+        return
+      }
+
+      const text = raw.replace(/[\r\n]+/g, '').trim()
       if (text) {
         setHistory((prev) => [text, ...prev])
         setValue('')
@@ -361,7 +364,7 @@ export function InputPrompt({
     return () => {
       stdin.off('data', handleData)
     }
-  }, [isRealTTY, isDisabled, onSubmit, stdin])
+  }, [isRealTTY, isDisabled, onSubmit, onToggleThinking, stdin])
 
   return (
     <Box flexDirection="column">
