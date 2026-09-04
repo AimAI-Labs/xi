@@ -29,6 +29,13 @@ export function getConfigDir(): string {
   return path.join(os.homedir(), '.xi')
 }
 
+export function getSessionDir(): string {
+  if (process.env['XI_SESSION_DIR']) {
+    return process.env['XI_SESSION_DIR']
+  }
+  return path.join(getConfigDir(), 'session')
+}
+
 export function getConfigPath(): string {
   if (process.env['XI_CONFIG_PATH']) {
     return process.env['XI_CONFIG_PATH']

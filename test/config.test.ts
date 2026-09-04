@@ -6,6 +6,7 @@ import test from 'ava'
 
 import {
   getConfigPath,
+  getSessionDir,
   loadConfig,
   saveConfig,
   resolveApiKey,
@@ -138,6 +139,23 @@ test('resolveApiKey prioritizes DEEPSEEK_API_KEY over config and OPENAI_API_KEY'
       process.env['OPENAI_API_KEY'] = originalOpenAI
     } else {
       delete process.env['OPENAI_API_KEY']
+    }
+  }
+})
+
+test('getSessionDir returns default ~/.xi/session and respects XI_SESSION_DIR sandbox', (t) => {
+  const original = process.env['XI_SESSION_DIR']
+  try {
+    delete process.env['XI_SESSION_DIR']
+    t.is(getSessionDir(), path.join(os.homedir(), '.xi', 'session'))
+
+    process.env['XI_SESSION_DIR'] = '/tmp/custom-session-sandbox'
+    t.is(getSessionDir(), '/tmp/custom-session-sandbox')
+  } finally {
+    if (original !== undefined) {
+      process.env['XI_SESSION_DIR'] = original
+    } else {
+      delete process.env['XI_SESSION_DIR']
     }
   }
 })

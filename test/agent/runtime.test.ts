@@ -1,3 +1,7 @@
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+
 import test from 'ava'
 
 import { AgentRuntime } from '../../src/agent/AgentRuntime.js'
@@ -10,6 +14,18 @@ import { CalculatorTool } from '../../src/agent/tools/CalculatorTool.js'
 import { SearchTool } from '../../src/agent/tools/SearchTool.js'
 import { TodoTool } from '../../src/agent/tools/TodoTool.js'
 import { Tracer } from '../../src/agent/Tracer.js'
+
+const testSandboxDir = path.join(os.tmpdir(), `xi-runtime-test-${Date.now()}-${Math.random()}`)
+
+test.before(() => {
+  fs.mkdirSync(testSandboxDir, { recursive: true })
+  process.env['XI_SESSION_DIR'] = testSandboxDir
+})
+
+test.after.always(() => {
+  delete process.env['XI_SESSION_DIR']
+  fs.rmSync(testSandboxDir, { recursive: true, force: true })
+})
 
 function setupTestEnvironment() {
   const registry = new ToolRegistry()

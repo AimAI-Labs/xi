@@ -1,3 +1,7 @@
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+
 import test from 'ava'
 
 import { AgentRuntime } from '../../src/agent/AgentRuntime.js'
@@ -5,6 +9,21 @@ import { MockLLMClient } from '../../src/agent/LLMClient.js'
 import { ToolRegistry } from '../../src/agent/ToolRegistry.js'
 import { CalculatorTool } from '../../src/agent/tools/CalculatorTool.js'
 import type { AgentStreamEvent } from '../../src/agent/types.js'
+
+const testSandboxDir = path.join(
+  os.tmpdir(),
+  `xi-stream-runtime-test-${Date.now()}-${Math.random()}`,
+)
+
+test.before(() => {
+  fs.mkdirSync(testSandboxDir, { recursive: true })
+  process.env['XI_SESSION_DIR'] = testSandboxDir
+})
+
+test.after.always(() => {
+  delete process.env['XI_SESSION_DIR']
+  fs.rmSync(testSandboxDir, { recursive: true, force: true })
+})
 
 test('AgentRuntime.runStream: text response yields thinking_delta, content_delta and finished', async (t) => {
   const mockClient = new MockLLMClient()

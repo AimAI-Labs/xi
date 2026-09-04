@@ -11,8 +11,10 @@ import { ExitCommand } from '../../src/commands/builtin/ExitCommand.js'
 import { HelpCommand } from '../../src/commands/builtin/HelpCommand.js'
 import { KeyCommand } from '../../src/commands/builtin/KeyCommand.js'
 import { ModelCommand } from '../../src/commands/builtin/ModelCommand.js'
+import { NewCommand } from '../../src/commands/builtin/NewCommand.js'
 import { SessionCommand } from '../../src/commands/builtin/SessionCommand.js'
 import { CommandRegistry } from '../../src/commands/CommandRegistry.js'
+import { createDefaultCommandRegistry } from '../../src/commands/index.js'
 import type { CommandContext } from '../../src/commands/types.js'
 import type { XiConfig } from '../../src/config/types.js'
 
@@ -22,10 +24,12 @@ const testSandboxToml = path.join(testSandboxDir, 'xi.toml')
 test.before(() => {
   fs.mkdirSync(testSandboxDir, { recursive: true })
   process.env['XI_CONFIG_PATH'] = testSandboxToml
+  process.env['XI_SESSION_DIR'] = path.join(testSandboxDir, 'session')
 })
 
 test.after.always(() => {
   delete process.env['XI_CONFIG_PATH']
+  delete process.env['XI_SESSION_DIR']
   fs.rmSync(testSandboxDir, { recursive: true, force: true })
 })
 
@@ -110,16 +114,52 @@ test('KeyCommand displays and updates API Key', async (t) => {
   t.true(fs.existsSync(testSandboxToml))
 })
 
-test('SessionCommand displays or switches session', async (t) => {
+test('SessionCommand displays or switches session and lists all sessions', async (t) => {
   const cmd = new SessionCommand()
   const { ctx, state } = createTestContext()
 
+  // 预置一些会话
+  ctx.runtime.getSessionStore().getOrCreateSession('session-1')
+  ctx.runtime.getSessionStore().getOrCreateSession('session-2')
+
   const res1 = await cmd.execute('', ctx)
   t.true(res1.message?.includes('session-default'))
+  t.true(res1.message?.includes('已有会话:') || res1.message?.includes('所有会话:'))
+  t.true(res1.message?.includes('session-1'))
+  t.true(res1.message?.includes('session-2'))
 
   const res2 = await cmd.execute('window-2', ctx)
   t.is(state.sessionId, 'window-2')
   t.true(res2.message?.includes('已切换到会话: window-2'))
+})
+
+test('NewCommand creates session and clears screen', async (t) => {
+  const cmd = new NewCommand()
+  const { ctx, state } = createTestContext()
+
+  // 1. 无参开启新会话
+  state.cleared = false
+  const res1 = await cmd.execute('', ctx)
+  t.is(res1.type, 'output')
+  t.true(state.cleared)
+  t.true(state.sessionId.startsWith('session-'))
+  t.true(res1.message?.includes(`已开启并切换至新会话: ${state.sessionId}`))
+
+  // 2. 带参开启指定会话
+  state.cleared = false
+  const res2 = await cmd.execute('my-custom-session', ctx)
+  t.is(res2.type, 'output')
+  t.true(state.cleared)
+  t.is(state.sessionId, 'my-custom-session')
+  t.true(res2.message?.includes('已开启并切换至新会话: my-custom-session'))
+})
+
+test('createDefaultCommandRegistry includes new and session commands', (t) => {
+  const registry = createDefaultCommandRegistry()
+  t.truthy(registry.get('new'))
+  t.truthy(registry.get('n'))
+  t.truthy(registry.get('session'))
+  t.truthy(registry.get('s'))
 })
 
 test('ClearCommand calls clearScreen', async (t) => {

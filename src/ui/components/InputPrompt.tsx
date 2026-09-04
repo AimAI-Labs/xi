@@ -1,8 +1,10 @@
 import { Box, Text, useInput, useStdin } from 'ink'
 import React, { useEffect, useState } from 'react'
 
+import type { SessionSummary } from '../../agent/SessionStore.js'
 import type { SlashCommand } from '../../commands/types.js'
 import { ModelMenu } from './ModelMenu.js'
+import { fuzzyMatch, SessionMenu } from './SessionMenu.js'
 import { SlashMenu } from './SlashMenu.js'
 
 export interface InputPromptProps {
@@ -17,6 +19,8 @@ export interface InputPromptProps {
   onToggleExpandTools?: () => void
   currentModel?: string
   onFetchModels?: () => Promise<string[]>
+  currentSessionId?: string
+  onFetchSessions?: () => SessionSummary[]
   initialValue?: string
 }
 
@@ -35,6 +39,10 @@ interface RawInputHandlerProps {
   filteredModels: string[]
   modelMenuIndex: number
   setModelMenuIndex: React.Dispatch<React.SetStateAction<number>>
+  isSessionActive: boolean
+  filteredSessions: SessionSummary[]
+  sessionMenuIndex: number
+  setSessionMenuIndex: React.Dispatch<React.SetStateAction<number>>
   isMenuDismissed: boolean
   setIsMenuDismissed: React.Dispatch<React.SetStateAction<boolean>>
   onToggleThinking?: () => void
@@ -61,6 +69,10 @@ function RawInputHandler({
   filteredModels,
   modelMenuIndex,
   setModelMenuIndex,
+  isSessionActive,
+  filteredSessions,
+  sessionMenuIndex,
+  setSessionMenuIndex,
   isMenuDismissed,
   setIsMenuDismissed,
   onToggleThinking,
@@ -102,9 +114,9 @@ function RawInputHandler({
       return
     }
 
-    // Escape 键: 关闭 Slash 或 Model 菜单浮层
+    // Escape 键: 关闭 Slash、Model 或 Session 菜单浮层
     if (key.escape) {
-      if (isSlashActive || isModelActive) {
+      if (isSlashActive || isModelActive || isSessionActive) {
         setIsMenuDismissed(true)
         return
       }
@@ -112,6 +124,21 @@ function RawInputHandler({
 
     // 回车处理
     if (key.return || input === '\r' || input === '\n') {
+      // 若处于 Session 候选菜单，回车直接切换并提交选中会话
+      if (isSessionActive && filteredSessions.length > 0) {
+        const selected = filteredSessions[sessionMenuIndex] || filteredSessions[0]
+        if (selected) {
+          const cmd = `/session ${selected.id}`
+          setHistory((prev) => [cmd, ...prev])
+          setHistoryIndex(-1)
+          setValue('')
+          setIsMenuDismissed(false)
+          setSessionMenuIndex(0)
+          onSubmit(cmd)
+          return
+        }
+      }
+
       // 若处于 Model 候选菜单，回车直接切换并提交选中模型
       if (isModelActive && filteredModels.length > 0) {
         const selected = filteredModels[modelMenuIndex] || filteredModels[0]
@@ -145,6 +172,7 @@ function RawInputHandler({
         setIsMenuDismissed(false)
         setMenuIndex(0)
         setModelMenuIndex(0)
+        setSessionMenuIndex(0)
         onSubmit(trimmed)
       }
       return
@@ -152,6 +180,11 @@ function RawInputHandler({
 
     // 方向键 Up
     if (key.upArrow) {
+      if (isSessionActive && filteredSessions.length > 0) {
+        setSessionMenuIndex((prev) => (prev > 0 ? prev - 1 : filteredSessions.length - 1))
+        return
+      }
+
       if (isModelActive && filteredModels.length > 0) {
         setModelMenuIndex((prev) => (prev > 0 ? prev - 1 : filteredModels.length - 1))
         return
@@ -172,6 +205,11 @@ function RawInputHandler({
 
     // 方向键 Down
     if (key.downArrow) {
+      if (isSessionActive && filteredSessions.length > 0) {
+        setSessionMenuIndex((prev) => (prev < filteredSessions.length - 1 ? prev + 1 : 0))
+        return
+      }
+
       if (isModelActive && filteredModels.length > 0) {
         setModelMenuIndex((prev) => (prev < filteredModels.length - 1 ? prev + 1 : 0))
         return
@@ -205,6 +243,7 @@ function RawInputHandler({
       setIsMenuDismissed(false)
       setMenuIndex(0)
       setModelMenuIndex(0)
+      setSessionMenuIndex(0)
 
       if (input.includes('\r') || input.includes('\n')) {
         const clean = (value + input).replace(/[\r\n]+/g, '').trim()
@@ -235,6 +274,8 @@ export function InputPrompt({
   onToggleExpandTools,
   currentModel,
   onFetchModels,
+  currentSessionId,
+  onFetchSessions,
   initialValue = '',
 }: InputPromptProps) {
   const { isRawModeSupported, stdin } = useStdin()
@@ -244,7 +285,9 @@ export function InputPrompt({
   const [historyIndex, setHistoryIndex] = useState<number>(-1)
   const [menuIndex, setMenuIndex] = useState<number>(0)
   const [modelMenuIndex, setModelMenuIndex] = useState<number>(0)
+  const [sessionMenuIndex, setSessionMenuIndex] = useState<number>(0)
   const [availableModels, setAvailableModels] = useState<string[]>([])
+  const [availableSessions, setAvailableSessions] = useState<SessionSummary[]>([])
   const [isLoadingModels, setIsLoadingModels] = useState<boolean>(false)
   const [hasFetchedModels, setHasFetchedModels] = useState<boolean>(false)
   const [isMenuDismissed, setIsMenuDismissed] = useState<boolean>(false)
@@ -255,12 +298,31 @@ export function InputPrompt({
   const isModelActive =
     !isMenuDismissed && Boolean(/^\/(model|m)(\s.*)?$/.test(value)) && value.includes(' ')
 
+  const isSessionActive =
+    !isMenuDismissed && Boolean(/^\/(session|s)(\s.*)?$/.test(value)) && value.includes(' ')
+
   const modelFilter = value.replace(/^\/(model|m)\s*/, '')
   const filteredModels = availableModels.filter((model) => {
     const search = modelFilter.trim().toLowerCase()
     if (!search) return true
     return model.toLowerCase().includes(search)
   })
+
+  const sessionFilter = value.replace(/^\/(session|s)\s*/, '')
+  const filteredSessions = availableSessions.filter((session) => {
+    if (fuzzyMatch(sessionFilter, session.id)) return true
+    if (session.lastUserMessage && fuzzyMatch(sessionFilter, session.lastUserMessage)) return true
+    return false
+  })
+
+  useEffect(() => {
+    if (isSessionActive && onFetchSessions) {
+      const sessions = onFetchSessions()
+      if (Array.isArray(sessions)) {
+        setAvailableSessions(sessions)
+      }
+    }
+  }, [isSessionActive, onFetchSessions])
 
   useEffect(() => {
     if (isModelActive && !hasFetchedModels && onFetchModels) {
@@ -305,26 +367,30 @@ export function InputPrompt({
     <Box flexDirection="column">
       {isRealTTY && (
         <RawInputHandler
-          isDisabled={isDisabled}
-          value={value}
-          setValue={setValue}
           commands={commands}
           filteredModels={filteredModels}
+          filteredSessions={filteredSessions}
           history={history}
           historyIndex={historyIndex}
+          isDisabled={isDisabled}
           isMenuDismissed={isMenuDismissed}
           isModelActive={isModelActive}
+          isSessionActive={isSessionActive}
           menuIndex={menuIndex}
           modelMenuIndex={modelMenuIndex}
           onExit={onExit}
           onSubmit={onSubmit}
           onToggleExpandTools={onToggleExpandTools}
           onToggleThinking={onToggleThinking}
+          sessionMenuIndex={sessionMenuIndex}
           setHistory={setHistory}
           setHistoryIndex={setHistoryIndex}
           setIsMenuDismissed={setIsMenuDismissed}
           setMenuIndex={setMenuIndex}
           setModelMenuIndex={setModelMenuIndex}
+          setSessionMenuIndex={setSessionMenuIndex}
+          setValue={setValue}
+          value={value}
         />
       )}
 
@@ -348,6 +414,16 @@ export function InputPrompt({
           isLoading={isLoadingModels}
           models={availableModels}
           selectedIndex={modelMenuIndex}
+        />
+      )}
+
+      {/* Session 会话选择浮层 */}
+      {isSessionActive && (
+        <SessionMenu
+          currentSessionId={currentSessionId}
+          filter={sessionFilter}
+          selectedIndex={sessionMenuIndex}
+          sessions={availableSessions}
         />
       )}
 

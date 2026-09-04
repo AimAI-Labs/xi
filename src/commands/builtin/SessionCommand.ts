@@ -10,13 +10,16 @@ export class SessionCommand implements SlashCommand {
     const targetSession = args.trim()
 
     if (!targetSession) {
-      const messages = context.runtime.getSessionStore().getMessages(context.sessionId)
+      const store = context.runtime.getSessionStore()
+      const messages = store.getMessages(context.sessionId)
+      const allSessions = store.getAllSessionIds()
       return {
         type: 'output',
         message: [
           `当前会话: ${context.sessionId}`,
           `历史消息: ${messages.length} 条`,
-          `提示: 可通过 "/session <id>" 切换或开启新会话，例如: /session window-2`,
+          `已有会话: ${allSessions.length > 0 ? allSessions.join(', ') : '无'}`,
+          `提示: 可通过 "/session <id>" 切换会话，或 "/new" 开启新会话`,
         ].join('\n'),
       }
     }

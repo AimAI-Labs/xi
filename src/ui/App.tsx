@@ -3,6 +3,7 @@ import React, { useState } from 'react'
 
 import { AgentRuntime, OpenAICompatibleClient } from '../agent/index.js'
 import { MockLLMClient } from '../agent/LLMClient.js'
+import type { Message } from '../agent/types.js'
 import { CommandRegistry } from '../commands/CommandRegistry.js'
 import { createDefaultCommandRegistry } from '../commands/index.js'
 import type { CommandContext } from '../commands/types.js'
@@ -13,6 +14,61 @@ import { InputPrompt } from './components/InputPrompt.js'
 import { MessageList } from './components/MessageList.js'
 import { Spinner } from './components/Spinner.js'
 import type { DisplayItem } from './types.js'
+
+function messagesToDisplayItems(messages: Message[]): DisplayItem[] {
+  const displayItems: DisplayItem[] = []
+  let counter = 0
+
+  for (const msg of messages) {
+    counter++
+    const baseId = `${counter}-${Date.now()}`
+
+    if (msg.role === 'user') {
+      displayItems.push({
+        id: `hist-user-${baseId}`,
+        role: 'user',
+        content: msg.content,
+        timestamp: Date.now(),
+        isHistorical: true,
+      })
+    } else if (msg.role === 'assistant') {
+      if (msg.reasoning_content) {
+        displayItems.push({
+          id: `hist-think-${baseId}`,
+          role: 'thinking',
+          content: msg.reasoning_content,
+          timestamp: Date.now(),
+          isHistorical: true,
+        })
+      }
+      if (msg.content) {
+        displayItems.push({
+          id: `hist-asst-${baseId}`,
+          role: 'assistant',
+          content: msg.content,
+          timestamp: Date.now(),
+          isHistorical: true,
+        })
+      }
+    } else if (msg.role === 'tool') {
+      displayItems.push({
+        id: `hist-tool-${baseId}`,
+        role: 'tool',
+        content: `${msg.name}: completed`,
+        timestamp: Date.now(),
+        isHistorical: true,
+        toolCall: {
+          toolCallId: msg.tool_call_id,
+          toolName: msg.name,
+          status: 'completed',
+          result: msg.content,
+        },
+      })
+    }
+  }
+
+  return displayItems
+}
 
 export interface AppProps {
   runtime?: AgentRuntime
@@ -48,11 +104,6 @@ export default function App({
   const [currentModel, setCurrentModel] = useState(
     () => initialModel || config.llm?.model || 'deepseek-v4-flash',
   )
-  const [items, setItems] = useState<DisplayItem[]>([])
-  const [isBusy, setIsBusy] = useState(false)
-  const [busyStatus, setBusyStatus] = useState('')
-  const [thinkingEnabled, setThinkingEnabled] = useState(true)
-  const [isToolsExpanded, setIsToolsExpanded] = useState(false)
 
   const [runtime] = useState(() => {
     if (propRuntime) return propRuntime
@@ -65,6 +116,15 @@ export default function App({
       : new MockLLMClient()
     return new AgentRuntime({ llmClient: client })
   })
+
+  const [items, setItems] = useState<DisplayItem[]>(() => {
+    const history = runtime.getSessionStore().getMessages(initialSessionId)
+    return messagesToDisplayItems(history)
+  })
+  const [isBusy, setIsBusy] = useState(false)
+  const [busyStatus, setBusyStatus] = useState('')
+  const [thinkingEnabled, setThinkingEnabled] = useState(true)
+  const [isToolsExpanded, setIsToolsExpanded] = useState(false)
 
   const [commandRegistry] = useState(() => propRegistry ?? createDefaultCommandRegistry())
 
@@ -119,9 +179,15 @@ export default function App({
     }
   }
 
+  const handleSessionChange = (newSessionId: string) => {
+    setSessionId(newSessionId)
+    const history = runtime.getSessionStore().getMessages(newSessionId)
+    setItems(messagesToDisplayItems(history))
+  }
+
   const commandContext: CommandContext = {
     sessionId,
-    setSessionId,
+    setSessionId: handleSessionChange,
     currentModel,
     setCurrentModel,
     runtime,
@@ -323,10 +389,12 @@ export default function App({
       <InputPrompt
         commands={commandRegistry.getAll()}
         currentModel={currentModel}
+        currentSessionId={sessionId}
         isDisabled={isBusy}
         isToolsExpanded={isToolsExpanded}
         onExit={handleExit}
         onFetchModels={() => runtime.getLLMClient().fetchModels?.() ?? Promise.resolve([])}
+        onFetchSessions={() => runtime.getSessionStore().getAllSessions()}
         onSubmit={handleSubmit}
         onToggleExpandTools={() => setIsToolsExpanded((prev) => !prev)}
         onToggleThinking={() => setThinkingEnabled((prev) => !prev)}
