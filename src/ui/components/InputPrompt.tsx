@@ -2,6 +2,7 @@ import { Box, Text, useInput, useStdin } from 'ink'
 import React, { useEffect, useState } from 'react'
 
 import type { SlashCommand } from '../../commands/types.js'
+import { ModelMenu } from './ModelMenu.js'
 import { SlashMenu } from './SlashMenu.js'
 
 export interface InputPromptProps {
@@ -14,6 +15,9 @@ export interface InputPromptProps {
   onToggleThinking?: () => void
   isToolsExpanded?: boolean
   onToggleExpandTools?: () => void
+  currentModel?: string
+  onFetchModels?: () => Promise<string[]>
+  initialValue?: string
 }
 
 interface RawInputHandlerProps {
@@ -27,6 +31,10 @@ interface RawInputHandlerProps {
   commands: SlashCommand[]
   menuIndex: number
   setMenuIndex: React.Dispatch<React.SetStateAction<number>>
+  isModelActive: boolean
+  filteredModels: string[]
+  modelMenuIndex: number
+  setModelMenuIndex: React.Dispatch<React.SetStateAction<number>>
   isMenuDismissed: boolean
   setIsMenuDismissed: React.Dispatch<React.SetStateAction<boolean>>
   onToggleThinking?: () => void
@@ -49,6 +57,10 @@ function RawInputHandler({
   commands,
   menuIndex,
   setMenuIndex,
+  isModelActive,
+  filteredModels,
+  modelMenuIndex,
+  setModelMenuIndex,
   isMenuDismissed,
   setIsMenuDismissed,
   onToggleThinking,
@@ -90,9 +102,9 @@ function RawInputHandler({
       return
     }
 
-    // Escape 键: 关闭 Slash 菜单浮层
+    // Escape 键: 关闭 Slash 或 Model 菜单浮层
     if (key.escape) {
-      if (isSlashActive) {
+      if (isSlashActive || isModelActive) {
         setIsMenuDismissed(true)
         return
       }
@@ -100,6 +112,21 @@ function RawInputHandler({
 
     // 回车处理
     if (key.return || input === '\r' || input === '\n') {
+      // 若处于 Model 候选菜单，回车直接切换并提交选中模型
+      if (isModelActive && filteredModels.length > 0) {
+        const selected = filteredModels[modelMenuIndex] || filteredModels[0]
+        if (selected) {
+          const cmd = `/model ${selected}`
+          setHistory((prev) => [cmd, ...prev])
+          setHistoryIndex(-1)
+          setValue('')
+          setIsMenuDismissed(false)
+          setModelMenuIndex(0)
+          onSubmit(cmd)
+          return
+        }
+      }
+
       // 若处于 Slash 候选菜单，回车将当前选中项补全到输入框
       if (isSlashActive && filtered.length > 0) {
         const selected = filtered[menuIndex] || filtered[0]
@@ -117,6 +144,7 @@ function RawInputHandler({
         setValue('')
         setIsMenuDismissed(false)
         setMenuIndex(0)
+        setModelMenuIndex(0)
         onSubmit(trimmed)
       }
       return
@@ -124,6 +152,11 @@ function RawInputHandler({
 
     // 方向键 Up
     if (key.upArrow) {
+      if (isModelActive && filteredModels.length > 0) {
+        setModelMenuIndex((prev) => (prev > 0 ? prev - 1 : filteredModels.length - 1))
+        return
+      }
+
       if (isSlashActive && filtered.length > 0) {
         setMenuIndex((prev) => (prev > 0 ? prev - 1 : filtered.length - 1))
         return
@@ -139,6 +172,11 @@ function RawInputHandler({
 
     // 方向键 Down
     if (key.downArrow) {
+      if (isModelActive && filteredModels.length > 0) {
+        setModelMenuIndex((prev) => (prev < filteredModels.length - 1 ? prev + 1 : 0))
+        return
+      }
+
       if (isSlashActive && filtered.length > 0) {
         setMenuIndex((prev) => (prev < filtered.length - 1 ? prev + 1 : 0))
         return
@@ -166,6 +204,7 @@ function RawInputHandler({
     if (!key.ctrl && !key.meta && input) {
       setIsMenuDismissed(false)
       setMenuIndex(0)
+      setModelMenuIndex(0)
 
       if (input.includes('\r') || input.includes('\n')) {
         const clean = (value + input).replace(/[\r\n]+/g, '').trim()
@@ -194,17 +233,51 @@ export function InputPrompt({
   onToggleThinking,
   isToolsExpanded = false,
   onToggleExpandTools,
+  currentModel,
+  onFetchModels,
+  initialValue = '',
 }: InputPromptProps) {
   const { isRawModeSupported, stdin } = useStdin()
   const isRealTTY = Boolean(isRawModeSupported && typeof (stdin as any).ref === 'function')
-  const [value, setValue] = useState('')
+  const [value, setValue] = useState(initialValue)
   const [history, setHistory] = useState<string[]>([])
   const [historyIndex, setHistoryIndex] = useState<number>(-1)
   const [menuIndex, setMenuIndex] = useState<number>(0)
+  const [modelMenuIndex, setModelMenuIndex] = useState<number>(0)
+  const [availableModels, setAvailableModels] = useState<string[]>([])
+  const [isLoadingModels, setIsLoadingModels] = useState<boolean>(false)
+  const [hasFetchedModels, setHasFetchedModels] = useState<boolean>(false)
   const [isMenuDismissed, setIsMenuDismissed] = useState<boolean>(false)
 
   const isSlashActive =
     value.startsWith('/') && !value.includes(' ') && !isMenuDismissed && commands.length > 0
+
+  const isModelActive =
+    !isMenuDismissed && Boolean(/^\/(model|m)(\s.*)?$/.test(value)) && value.includes(' ')
+
+  const modelFilter = value.replace(/^\/(model|m)\s*/, '')
+  const filteredModels = availableModels.filter((model) => {
+    const search = modelFilter.trim().toLowerCase()
+    if (!search) return true
+    return model.toLowerCase().includes(search)
+  })
+
+  useEffect(() => {
+    if (isModelActive && !hasFetchedModels && onFetchModels) {
+      setIsLoadingModels(true)
+      setHasFetchedModels(true)
+      onFetchModels()
+        .then((models) => {
+          if (Array.isArray(models) && models.length > 0) {
+            setAvailableModels(models)
+          }
+        })
+        .catch(() => {})
+        .finally(() => {
+          setIsLoadingModels(false)
+        })
+    }
+  }, [isModelActive, hasFetchedModels, onFetchModels])
 
   // 在非 TTY / 单元测试环境中，直接监听 data 流并响应回车换行
   useEffect(() => {
@@ -235,33 +308,48 @@ export function InputPrompt({
           isDisabled={isDisabled}
           value={value}
           setValue={setValue}
-          history={history}
-          setHistory={setHistory}
-          historyIndex={historyIndex}
-          setHistoryIndex={setHistoryIndex}
           commands={commands}
-          menuIndex={menuIndex}
-          setMenuIndex={setMenuIndex}
+          filteredModels={filteredModels}
+          history={history}
+          historyIndex={historyIndex}
           isMenuDismissed={isMenuDismissed}
-          setIsMenuDismissed={setIsMenuDismissed}
-          onToggleThinking={onToggleThinking}
-          onToggleExpandTools={onToggleExpandTools}
-          onSubmit={onSubmit}
+          isModelActive={isModelActive}
+          menuIndex={menuIndex}
+          modelMenuIndex={modelMenuIndex}
           onExit={onExit}
+          onSubmit={onSubmit}
+          onToggleExpandTools={onToggleExpandTools}
+          onToggleThinking={onToggleThinking}
+          setHistory={setHistory}
+          setHistoryIndex={setHistoryIndex}
+          setIsMenuDismissed={setIsMenuDismissed}
+          setMenuIndex={setMenuIndex}
+          setModelMenuIndex={setModelMenuIndex}
         />
       )}
 
-      {/* Slash 命令选择浮层 */}
-      {isSlashActive && <SlashMenu commands={commands} filter={value} selectedIndex={menuIndex} />}
-
       {/* 输入条卡片：保留灰色圆角外边框，取消内部文本底色 */}
-      <Box flexDirection="row" borderStyle="round" borderColor="gray" paddingX={1}>
+      <Box borderColor="gray" borderStyle="round" flexDirection="row" paddingX={1}>
         <Text bold color="cyan">
           ξ &gt;{' '}
         </Text>
         {value ? <Text color="white">{value}</Text> : <Text color="gray">{placeholder}</Text>}
         {!isDisabled && <Text color="cyan">█</Text>}
       </Box>
+
+      {/* Slash 命令选择浮层 */}
+      {isSlashActive && <SlashMenu commands={commands} filter={value} selectedIndex={menuIndex} />}
+
+      {/* Model 模型选择浮层 */}
+      {isModelActive && (
+        <ModelMenu
+          currentModel={currentModel}
+          filter={modelFilter}
+          isLoading={isLoadingModels}
+          models={availableModels}
+          selectedIndex={modelMenuIndex}
+        />
+      )}
 
       {/* 底部按键提示与右下方思考模式指示 */}
       <Box flexDirection="row" justifyContent="space-between" marginTop={0}>

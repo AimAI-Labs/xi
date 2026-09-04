@@ -322,9 +322,11 @@ export default function App({
       {isBusy && <Spinner status={busyStatus} />}
       <InputPrompt
         commands={commandRegistry.getAll()}
+        currentModel={currentModel}
         isDisabled={isBusy}
         isToolsExpanded={isToolsExpanded}
         onExit={handleExit}
+        onFetchModels={() => runtime.getLLMClient().fetchModels?.() ?? Promise.resolve([])}
         onSubmit={handleSubmit}
         onToggleExpandTools={() => setIsToolsExpanded((prev) => !prev)}
         onToggleThinking={() => setThinkingEnabled((prev) => !prev)}

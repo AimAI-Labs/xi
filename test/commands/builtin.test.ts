@@ -81,6 +81,7 @@ test('ModelCommand displays current model or updates it', async (t) => {
   t.is(res1.type, 'output')
   t.true(res1.message?.includes('gpt-4o-mini'))
   t.true(res1.message?.includes('https://api.deepseek.com'))
+  t.true(res1.message?.includes('可用模型: mock-model-a, mock-model-b'))
 
   // 2. 带参切换
   const res2 = await cmd.execute('deepseek-chat', ctx)

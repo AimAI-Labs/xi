@@ -3,6 +3,7 @@ import type { LLMResponse, LLMStreamChunk, Message, ToolCall } from './types.js'
 export interface LLMClient {
   chat(messages: Message[], tools?: any[]): Promise<LLMResponse>
   chatStream(messages: Message[], tools?: any[]): AsyncIterable<LLMStreamChunk>
+  fetchModels?(): Promise<string[]>
 }
 
 export interface OpenAICompatibleClientOptions {
@@ -17,6 +18,8 @@ export class OpenAICompatibleClient implements LLMClient {
   private baseURL: string
   private model: string
   private temperature: number
+  private cachedModels: string[] | null = null
+  private fetchModelsPromise: Promise<string[]> | null = null
 
   constructor(options: OpenAICompatibleClientOptions = {}) {
     this.apiKey =
@@ -40,6 +43,54 @@ export class OpenAICompatibleClient implements LLMClient {
 
   getModel(): string {
     return this.model
+  }
+
+  async fetchModels(): Promise<string[]> {
+    if (this.cachedModels) {
+      return this.cachedModels
+    }
+
+    if (this.fetchModelsPromise) {
+      return this.fetchModelsPromise
+    }
+
+    const defaultModels = ['deepseek-chat', 'deepseek-reasoner']
+
+    if (!this.apiKey) {
+      return defaultModels
+    }
+
+    this.fetchModelsPromise = (async () => {
+      try {
+        const url = `${this.baseURL.replace(/\/+$/, '')}/models`
+        const res = await fetch(url, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${this.apiKey}`,
+          },
+        })
+
+        if (!res.ok) {
+          return defaultModels
+        }
+
+        const json = (await res.json()) as any
+        const data = Array.isArray(json?.data) ? json.data : []
+        const modelIds = data
+          .map((item: any) => (typeof item?.id === 'string' ? item.id.trim() : ''))
+          .filter(Boolean)
+
+        const result = modelIds.length > 0 ? modelIds : defaultModels
+        this.cachedModels = result
+        return result
+      } catch {
+        return defaultModels
+      } finally {
+        this.fetchModelsPromise = null
+      }
+    })()
+
+    return this.fetchModelsPromise
   }
 
   async chat(messages: Message[], tools?: any[]): Promise<LLMResponse> {
@@ -226,6 +277,7 @@ export class MockLLMClient implements LLMClient {
   private responseQueue: LLMResponse[] = []
   private streamQueue: LLMStreamChunk[][] = []
   private handler?: DynamicMockHandler
+  private availableModels: string[] = ['mock-model-a', 'mock-model-b']
 
   constructor(options: MockLLMClientOptions = {}) {
     this.handler = options.handler
@@ -282,5 +334,14 @@ export class MockLLMClient implements LLMClient {
       yield { tool_calls: res.tool_calls }
     }
     yield { isDone: true }
+  }
+
+  setAvailableModels(models: string[]): this {
+    this.availableModels = models
+    return this
+  }
+
+  async fetchModels(): Promise<string[]> {
+    return this.availableModels
   }
 }
