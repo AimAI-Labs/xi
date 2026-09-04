@@ -84,12 +84,9 @@ test('危险命令且用户确认执行时正常放行命令', async (t) => {
     },
   }
 
-  // 使用一个被判定为危险格式但实际可以无害输出的命令
-  // 比如带有 truncate table 字样的 node 打印指令？
-  // 或者直接看放行后是否调用了底层执行（如果是 git push -f 会尝试执行并在非 git 仓库报错，或者测试 node 打印）
-  // 比如 command: 'git push -f' 放行后会报错（exitCode）或执行
+  // 使用被判定为危险的 git reset --hard 命令（带不存在的 ref，必定报错且无害）
   const err = await t.throwsAsync(async () => {
-    await tool.execute({ command: 'git push -f' }, context)
+    await tool.execute({ command: 'git reset --hard __invalid_test_ref__' }, context)
   })
   t.true(confirmCalled, '应该已调用用户确认回调')
   t.truthy(err, '命令已被放行并尝试调用底层的 git 指令')
