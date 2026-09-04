@@ -1,5 +1,5 @@
 {
-  "name": "xi",
+  "name": "@aimai-labs/xi",
   "version": "0.0.0",
   "license": "MIT",
   "bin": "dist/cli.js",
