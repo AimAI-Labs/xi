@@ -53,9 +53,13 @@ jobs:
             echo "Setting package.json version from manual input to $VERSION"
             npm version "$VERSION" --no-git-tag-version --allow-same-version
           else
-            CURRENT_VER=$(node -p "require('./package.json').version")
-            echo "No tag or version input detected. Using current package.json version: $CURRENT_VER"
+            VERSION=$(node -p "require('./package.json').version")
+            echo "No tag or version input detected. Using current package.json version: $VERSION"
           fi
+
+          DIST_TAG=$(VERSION="$VERSION" node -e "const v = process.env.VERSION; if (!v.includes('-')) { console.log('latest'); } else { const m = v.match(/-([a-zA-Z]+)/); console.log(m ? m[1].toLowerCase() : 'next'); }")
+          echo "Target npm dist-tag: $DIST_TAG"
+          echo "DIST_TAG=$DIST_TAG" >> "$GITHUB_ENV"
 
       - name: Run test suite
         run: npm test
@@ -64,12 +68,13 @@ jobs:
         run: npm run build
 
       - name: Publish to npm
-        run: npm publish --access public --provenance
+        run: npm publish --access public --provenance --tag "$DIST_TAG"
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
