@@ -1,6 +1,7 @@
 {
   "name": "@aimai-labs/xi",
   "version": "0.0.0",
+  "description": "A minimal and immersive terminal AI agent CLI with ReAct runtime, tool calling, and session management",
   "license": "MIT",
   "repository": {
     "type": "git",
